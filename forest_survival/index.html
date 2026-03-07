@@ -35,18 +35,16 @@
   @keyframes pulse { from { opacity: 1; } to { opacity: 0.6; } }
   #car-hint { position: fixed; bottom: 118px; left: 50%; transform: translateX(-50%); color: #0ff; font-size: 13px; text-shadow: 1px 1px 0 #000; background: rgba(0,0,60,0.75); padding: 4px 14px; border: 1px solid #0af; display: none; }
   #clock { position: fixed; top: 16px; left: 50%; transform: translateX(-50%); color: #ffe; font-size: 13px; text-shadow: 1px 1px 0 #000; background: rgba(0,0,0,0.45); padding: 2px 14px; border: 1px solid #555; }
-  #touch-offer { position: fixed; left: 50%; bottom: 16px; transform: translateX(-50%); display: none; align-items: center; gap: 8px; pointer-events: auto; background: rgba(0,0,0,0.82); color: #fff; border: 1px solid #6ba6ff; border-radius: 10px; padding: 8px 10px; font-size: 12px; max-width: min(94vw, 470px); z-index: 40; }
-  .touch-offer-btn { pointer-events: auto; border: 1px solid #4f6a8a; border-radius: 7px; background: #122235; color: #fff; font: inherit; font-size: 11px; padding: 6px 8px; touch-action: manipulation; }
   #touch-controls { position: fixed; inset: 0; display: none; pointer-events: none; z-index: 35; }
-  #touch-pad-wrap { position: fixed; left: 14px; bottom: 14px; pointer-events: auto; }
-  #touch-pad { width: 132px; height: 132px; border-radius: 50%; border: 2px solid rgba(120,180,255,0.8); background: radial-gradient(circle at 35% 35%, rgba(180,220,255,0.22), rgba(0,0,0,0.35)); position: relative; touch-action: none; }
-  #touch-stick { width: 54px; height: 54px; border-radius: 50%; border: 2px solid rgba(215,235,255,0.95); background: rgba(140,190,255,0.4); position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); }
-  #touch-pad-label { color: #cfe7ff; font-size: 11px; text-align: center; margin-top: 5px; text-shadow: 1px 1px 0 #000; }
-  #touch-buttons { position: fixed; right: 14px; bottom: 16px; display: flex; flex-direction: column; gap: 10px; pointer-events: auto; }
-  .touch-btn { width: 86px; height: 48px; border-radius: 12px; border: 2px solid #86b8ff; background: rgba(8,24,44,0.8); color: #fff; font: inherit; font-size: 12px; text-shadow: 1px 1px 0 #000; touch-action: manipulation; }
+  #touch-zones { position: fixed; inset: 0; pointer-events: auto; touch-action: none; }
+  #touch-zones::before, #touch-zones::after { content: ''; position: absolute; background: rgba(140,190,255,0.14); }
+  #touch-zones::before { width: 2px; top: 0; bottom: 0; left: 50%; transform: translateX(-50%); }
+  #touch-zones::after { height: 2px; left: 0; right: 0; top: 50%; transform: translateY(-50%); }
+  .touch-btn { width: 86px; height: 48px; border-radius: 12px; border: 2px solid #86b8ff; background: rgba(8,24,44,0.8); color: #fff; font: inherit; font-size: 12px; text-shadow: 1px 1px 0 #000; touch-action: manipulation; pointer-events: auto; }
+  #touch-view-btn { position: fixed; right: 14px; bottom: 16px; }
   .touch-btn.secondary { border-color: #89ffee; background: rgba(7,35,35,0.8); }
   @media (max-width: 700px) {
-    #touch-offer { flex-wrap: wrap; justify-content: center; }
+    #touch-view-btn { width: 82px; height: 44px; }
   }
 </style>
 </head>
@@ -64,20 +62,9 @@
   <div id="message"></div>
   <div id="event-banner"></div>
   <div id="car-hint"></div>
-  <div id="touch-offer">
-    <span>No keyboard detected. Enable touch controls?</span>
-    <button id="touch-enable" class="touch-offer-btn">Enable</button>
-    <button id="touch-dismiss" class="touch-offer-btn">Dismiss</button>
-  </div>
   <div id="touch-controls">
-    <div id="touch-pad-wrap">
-      <div id="touch-pad"><div id="touch-stick"></div></div>
-      <div id="touch-pad-label">Trackpad</div>
-    </div>
-    <div id="touch-buttons">
-      <button id="touch-action" class="touch-btn">ACTION</button>
-      <button id="touch-camera" class="touch-btn secondary">CAM</button>
-    </div>
+    <div id="touch-zones"></div>
+    <button id="touch-view-btn" class="touch-btn secondary">VIEW</button>
   </div>
   <div id="objective">
     <div id="obj0" class="active">🪓 Chop trees (5 wood)</div>

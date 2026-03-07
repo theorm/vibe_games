@@ -37,12 +37,12 @@ showMessage(
   `🌲 <strong>FOREST SURVIVAL</strong> 🌲<br><br>
   <em>A vicious deer stalks the woods...<br>also aliens, and zombies from the lab.</em><br><br>
   <b>← → Turn &nbsp;&nbsp; ↑ ↓ Move &nbsp;&nbsp; SPACE Action</b><br>
-  <b>Phone/Tablet: enable touch controls for trackpad + ACTION/CAM</b><br><br>
+  <b>Phone/Tablet: full-screen zones to move/steer, tap for action, VIEW button for car camera</b><br><br>
   Chop trees → build workbench → craft pickaxe<br>→ mine ore → forge sword → kill deer<br><br>
   🚗 Red car parked in the safe zone for emergencies<br>
   🧟 Zombies invade from the lab at dawn<br>
   👽 Aliens land randomly — car runs them over!<br><br>
-  <strong style="color:#ffd700">Press any arrow key to begin</strong>`,
+  <strong style="color:#ffd700">Press any arrow key or tap screen to begin</strong>`,
   0
 );
 

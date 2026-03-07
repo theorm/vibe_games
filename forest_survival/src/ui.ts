@@ -3,7 +3,7 @@ import { gameState, trees, mines, aliens, zombies } from './state.js';
 import { FOREST_R, SAFE_R } from './constants.js';
 
 function actionControlName(): string {
-  return gameState.inputProfile === 'touch' ? 'ACTION' : 'SPACE';
+  return gameState.inputProfile === 'touch' ? 'TAP' : 'SPACE';
 }
 
 export function setActionHint(txt: string): void {
@@ -104,7 +104,7 @@ export function updateCarHint(playerPos: any, carPos: any): void {
   } else if (gameState.inCar) {
     ch.style.display = 'block';
     ch.textContent = gameState.inputProfile === 'touch'
-      ? '[ACTION] Exit car  |  Trackpad Drive + Steer'
+      ? '[TAP] Exit car  |  Screen Zones Drive + Steer'
       : '[SPACE] Exit car  |  ↑↓ Drive  ←→ Steer';
   }
   else                             { ch.style.display = 'none'; }

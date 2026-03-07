@@ -149,3 +149,13 @@ AGENTS.md maintenance pass:
 - Documented Codex PostToolUse hook details from `.codex/config.toml` (`Write|Edit|MultiEdit` -> `npm run build 2>&1 | tail -20`)
 - Removed outdated references to OXC output naming, `dist/main.js`, and `serve.mjs`
 - Updated folder structure docs to match the current project layout and scripts
+
+# v.14
+
+Touch controls usability overhaul:
+
+- Touch controls now auto-enable on detected touch-first devices (no enable/dismiss gate)
+- Replaced the old virtual joystick with full-screen directional zones split into `up/down/left/right`
+- Added tap-based actions on the touch zones (single tap and repeated taps both trigger actions)
+- Kept a dedicated on-screen `VIEW` button for in-car camera switching
+- Updated touch control copy in intro/hints (`TAP` and `VIEW`) to match the new interaction model

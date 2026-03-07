@@ -14,16 +14,16 @@ import { setActionHint, showMessage, hideMessage, updateHUD } from './ui.js';
 import { initTouchControls } from './touch-controls.js';
 
 function actionControlName(): string {
-  return gameState.inputProfile === 'touch' ? 'ACTION' : 'SPACE';
+  return gameState.inputProfile === 'touch' ? 'TAP' : 'SPACE';
 }
 
 function cameraControlName(): string {
-  return gameState.inputProfile === 'touch' ? 'CAM' : 'V';
+  return gameState.inputProfile === 'touch' ? 'VIEW' : 'V';
 }
 
 function setDrivingHint(): void {
   const movement = gameState.inputProfile === 'touch'
-    ? 'trackpad drive + steer'
+    ? 'screen zones drive + steer'
     : '↑↓ accelerate, ←→ steer';
   setActionHint(`🚗 Driving! ${movement}, ${cameraControlName()} camera, ${actionControlName()} exit.`);
 }
@@ -33,8 +33,8 @@ function toggleCarCameraView(): void {
   gameState.driverView = !gameState.driverView;
   if (gameState.inputProfile === 'touch') {
     setActionHint(gameState.driverView
-      ? '🚗 Driver view active — tap CAM to switch back'
-      : '🚗 Third-person view active — tap CAM for driver view');
+      ? '🚗 Driver view active — tap VIEW to switch back'
+      : '🚗 Third-person view active — tap VIEW for driver view');
     return;
   }
   setActionHint(gameState.driverView
@@ -176,7 +176,7 @@ export function checkProgress(): void {
 export function updateContextHints(): void {
   if (gameState.gameOver || gameState.gameWon) return;
   if (gameState.inCar) {
-    if (gameState.inputProfile === 'touch') setActionHint('🚗 Driving — tap CAM for camera, ACTION to exit');
+    if (gameState.inputProfile === 'touch') setActionHint('🚗 Driving — tap VIEW for camera, TAP to exit');
     else setActionHint('🚗 Driving — V toggle camera, SPACE to exit');
     return;
   }
@@ -233,9 +233,6 @@ export function initInput(onFirstKey: () => void): void {
     onStart: startGameFromInput,
     onAction: handleAction,
     onToggleCamera: toggleCarCameraView,
-    onOfferShown: () => {
-      setActionHint('Touch device detected: enable touch controls to use the on-screen trackpad.');
-    },
   });
 }
 

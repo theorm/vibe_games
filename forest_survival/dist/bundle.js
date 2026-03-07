@@ -875,7 +875,7 @@
 	//#endregion
 	//#region src/ui.ts
 	function actionControlName$1() {
-		return gameState.inputProfile === "touch" ? "ACTION" : "SPACE";
+		return gameState.inputProfile === "touch" ? "TAP" : "SPACE";
 	}
 	function setActionHint(txt) {
 		document.getElementById("action-hint").textContent = txt;
@@ -1029,7 +1029,7 @@
 			ch.textContent = `[${actionControlName$1()}] Get in car 🚗`;
 		} else if (gameState.inCar) {
 			ch.style.display = "block";
-			ch.textContent = gameState.inputProfile === "touch" ? "[ACTION] Exit car  |  Trackpad Drive + Steer" : "[SPACE] Exit car  |  ↑↓ Drive  ←→ Steer";
+			ch.textContent = gameState.inputProfile === "touch" ? "[TAP] Exit car  |  Screen Zones Drive + Steer" : "[SPACE] Exit car  |  ↑↓ Drive  ←→ Steer";
 		} else ch.style.display = "none";
 	}
 	function updateMinimap(playerPos, carPos, deerPos, deerAlive) {
@@ -1894,18 +1894,8 @@
 	}
 	//#endregion
 	//#region src/touch-controls.ts
-	const PAD_RADIUS = 56;
-	const DEADZONE = .28;
-	let touchControlsEnabled = false;
-	function setDirectionalKeys(nx, ny) {
-		keys.ArrowLeft = nx < -DEADZONE;
-		keys.ArrowRight = nx > DEADZONE;
-		keys.ArrowUp = ny < -DEADZONE;
-		keys.ArrowDown = ny > DEADZONE;
-	}
-	function resetDirectionalKeys() {
-		setDirectionalKeys(0, 0);
-	}
+	const TAP_MS = 230;
+	const TAP_MOVE_PX = 18;
 	function isLikelyKeyboardlessDevice() {
 		const hasTouch = navigator.maxTouchPoints > 0 || "ontouchstart" in window;
 		const coarsePointer = window.matchMedia("(pointer: coarse)").matches || window.matchMedia("(any-pointer: coarse)").matches;
@@ -1914,100 +1904,86 @@
 	}
 	function initTouchControls(hooks) {
 		if (!isLikelyKeyboardlessDevice()) return;
-		const offerEl = document.getElementById("touch-offer");
-		const enableBtn = document.getElementById("touch-enable");
-		const dismissBtn = document.getElementById("touch-dismiss");
 		const controlsEl = document.getElementById("touch-controls");
-		const padEl = document.getElementById("touch-pad");
-		const stickEl = document.getElementById("touch-stick");
-		const actionBtn = document.getElementById("touch-action");
-		const cameraBtn = document.getElementById("touch-camera");
-		if (!offerEl || !enableBtn || !dismissBtn || !controlsEl || !padEl || !stickEl || !actionBtn || !cameraBtn) return;
-		hooks.onOfferShown();
-		offerEl.style.display = "flex";
-		const centerStick = () => {
-			stickEl.style.transform = "translate(-50%, -50%)";
+		const zonesEl = document.getElementById("touch-zones");
+		const viewBtn = document.getElementById("touch-view-btn");
+		if (!controlsEl || !zonesEl || !viewBtn) return;
+		const clearDirectionalKeys = () => {
+			keys.ArrowLeft = false;
+			keys.ArrowRight = false;
+			keys.ArrowUp = false;
+			keys.ArrowDown = false;
 		};
-		let padPointerId = null;
+		const setDirectionFromPoint = (clientX, clientY) => {
+			const dx = clientX - window.innerWidth / 2;
+			const dy = clientY - window.innerHeight / 2;
+			clearDirectionalKeys();
+			if (Math.abs(dx) > Math.abs(dy)) {
+				if (dx < 0) keys.ArrowLeft = true;
+				else keys.ArrowRight = true;
+				return;
+			}
+			if (dy < 0) keys.ArrowUp = true;
+			else keys.ArrowDown = true;
+		};
 		const enableTouchControls = () => {
-			if (touchControlsEnabled) return;
-			touchControlsEnabled = true;
 			gameState.inputProfile = "touch";
 			controlsEl.style.display = "block";
-			offerEl.style.display = "none";
-			centerStick();
 		};
-		const updatePadFromPoint = (clientX, clientY) => {
-			const rect = padEl.getBoundingClientRect();
-			const cx = rect.left + rect.width / 2;
-			const cy = rect.top + rect.height / 2;
-			const rawDx = clientX - cx;
-			const rawDy = clientY - cy;
-			const dist = Math.hypot(rawDx, rawDy);
-			const scale = dist > PAD_RADIUS ? PAD_RADIUS / dist : 1;
-			const dx = rawDx * scale;
-			const dy = rawDy * scale;
-			setDirectionalKeys(dx / PAD_RADIUS, dy / PAD_RADIUS);
-			stickEl.style.transform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`;
-		};
-		enableBtn.addEventListener("click", (ev) => {
-			ev.preventDefault();
-			enableTouchControls();
-			hooks.onStart();
-		});
-		dismissBtn.addEventListener("click", (ev) => {
-			ev.preventDefault();
-			offerEl.style.display = "none";
-		});
-		actionBtn.addEventListener("click", (ev) => {
-			ev.preventDefault();
-			hooks.onStart();
-			hooks.onAction();
-		});
-		cameraBtn.addEventListener("click", (ev) => {
+		let movementPointerId = null;
+		let downX = 0;
+		let downY = 0;
+		let downTs = 0;
+		viewBtn.addEventListener("click", (ev) => {
 			ev.preventDefault();
 			hooks.onStart();
 			hooks.onToggleCamera();
 		});
-		padEl.addEventListener("pointerdown", (ev) => {
-			if (!touchControlsEnabled) return;
+		zonesEl.addEventListener("pointerdown", (ev) => {
 			ev.preventDefault();
 			hooks.onStart();
-			padPointerId = ev.pointerId;
-			padEl.setPointerCapture(ev.pointerId);
-			updatePadFromPoint(ev.clientX, ev.clientY);
+			if (movementPointerId !== null) return;
+			movementPointerId = ev.pointerId;
+			downX = ev.clientX;
+			downY = ev.clientY;
+			downTs = performance.now();
+			zonesEl.setPointerCapture(ev.pointerId);
+			setDirectionFromPoint(ev.clientX, ev.clientY);
 		});
-		padEl.addEventListener("pointermove", (ev) => {
-			if (!touchControlsEnabled || padPointerId !== ev.pointerId) return;
+		zonesEl.addEventListener("pointermove", (ev) => {
+			if (movementPointerId !== ev.pointerId) return;
 			ev.preventDefault();
-			updatePadFromPoint(ev.clientX, ev.clientY);
+			setDirectionFromPoint(ev.clientX, ev.clientY);
 		});
-		const endPadPointer = (ev) => {
-			if (padPointerId !== ev.pointerId) return;
-			padPointerId = null;
-			resetDirectionalKeys();
-			centerStick();
-			if (padEl.hasPointerCapture(ev.pointerId)) padEl.releasePointerCapture(ev.pointerId);
+		const finishMovementPointer = (ev) => {
+			if (movementPointerId !== ev.pointerId) return;
+			const elapsed = performance.now() - downTs;
+			const moved = Math.hypot(ev.clientX - downX, ev.clientY - downY);
+			movementPointerId = null;
+			clearDirectionalKeys();
+			if (zonesEl.hasPointerCapture(ev.pointerId)) zonesEl.releasePointerCapture(ev.pointerId);
+			if (elapsed <= TAP_MS && moved <= TAP_MOVE_PX) hooks.onAction();
 		};
-		padEl.addEventListener("pointerup", endPadPointer);
-		padEl.addEventListener("pointercancel", endPadPointer);
+		zonesEl.addEventListener("pointerup", finishMovementPointer);
+		zonesEl.addEventListener("pointercancel", finishMovementPointer);
+		enableTouchControls();
 	}
 	//#endregion
 	//#region src/input.ts
 	function actionControlName() {
-		return gameState.inputProfile === "touch" ? "ACTION" : "SPACE";
+		return gameState.inputProfile === "touch" ? "TAP" : "SPACE";
 	}
 	function cameraControlName() {
-		return gameState.inputProfile === "touch" ? "CAM" : "V";
+		return gameState.inputProfile === "touch" ? "VIEW" : "V";
 	}
 	function setDrivingHint() {
-		setActionHint(`🚗 Driving! ${gameState.inputProfile === "touch" ? "trackpad drive + steer" : "↑↓ accelerate, ←→ steer"}, ${cameraControlName()} camera, ${actionControlName()} exit.`);
+		setActionHint(`🚗 Driving! ${gameState.inputProfile === "touch" ? "screen zones drive + steer" : "↑↓ accelerate, ←→ steer"}, ${cameraControlName()} camera, ${actionControlName()} exit.`);
 	}
 	function toggleCarCameraView() {
 		if (!gameState.inCar) return;
 		gameState.driverView = !gameState.driverView;
 		if (gameState.inputProfile === "touch") {
-			setActionHint(gameState.driverView ? "🚗 Driver view active — tap CAM to switch back" : "🚗 Third-person view active — tap CAM for driver view");
+			setActionHint(gameState.driverView ? "🚗 Driver view active — tap VIEW to switch back" : "🚗 Third-person view active — tap VIEW for driver view");
 			return;
 		}
 		setActionHint(gameState.driverView ? "🚗 Driver view — press V to switch back" : "🚗 Third-person view — press V for driver view");
@@ -2157,10 +2133,7 @@
 		initTouchControls({
 			onStart: startGameFromInput,
 			onAction: handleAction,
-			onToggleCamera: toggleCarCameraView,
-			onOfferShown: () => {
-				setActionHint("Touch device detected: enable touch controls to use the on-screen trackpad.");
-			}
+			onToggleCamera: toggleCarCameraView
 		});
 	}
 	//#endregion
@@ -2182,12 +2155,12 @@
 	showMessage(`🌲 <strong>FOREST SURVIVAL</strong> 🌲<br><br>
   <em>A vicious deer stalks the woods...<br>also aliens, and zombies from the lab.</em><br><br>
   <b>← → Turn &nbsp;&nbsp; ↑ ↓ Move &nbsp;&nbsp; SPACE Action</b><br>
-  <b>Phone/Tablet: enable touch controls for trackpad + ACTION/CAM</b><br><br>
+  <b>Phone/Tablet: full-screen zones to move/steer, tap for action, VIEW button for car camera</b><br><br>
   Chop trees → build workbench → craft pickaxe<br>→ mine ore → forge sword → kill deer<br><br>
   🚗 Red car parked in the safe zone for emergencies<br>
   🧟 Zombies invade from the lab at dawn<br>
   👽 Aliens land randomly — car runs them over!<br><br>
-  <strong style="color:#ffd700">Press any arrow key to begin</strong>`, 0);
+  <strong style="color:#ffd700">Press any arrow key or tap screen to begin</strong>`, 0);
 	let gameStarted = false;
 	initInput(() => {
 		gameStarted = true;
