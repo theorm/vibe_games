@@ -1,33 +1,20 @@
-// Compile all src/*.ts → dist/*.js using @oxc-node/core
-import { transform } from '@oxc-node/core';
-import { readFileSync, writeFileSync, readdirSync, mkdirSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { spawnSync } from 'node:child_process';
+import { mkdirSync, readdirSync, rmSync } from 'node:fs';
+import { resolve, join } from 'node:path';
 
-const srcDir  = resolve('./src');
 const distDir = resolve('./dist');
-
 mkdirSync(distDir, { recursive: true });
 
-const files = readdirSync(srcDir).filter(f => f.endsWith('.ts'));
-let errors = 0;
-
-for (const file of files) {
-  const srcPath = join(srcDir, file);
-  const outPath = join(distDir, file.replace(/\.ts$/, '.js'));
-  try {
-    const source = readFileSync(srcPath);
-    const result = transform(srcPath, source);
-    writeFileSync(outPath, result.source());
-    console.log(`  compiled: src/${file} → dist/${file.replace(/\.ts$/, '.js')}`);
-  } catch (err) {
-    console.error(`  ERROR: ${file}:`, err.message);
-    errors++;
-  }
+// Keep dist focused on build output by removing previous JS artifacts first.
+for (const file of readdirSync(distDir)) {
+  if (file.endsWith('.js')) rmSync(join(distDir, file));
 }
 
-if (errors) {
-  console.error(`\nBuild finished with ${errors} error(s).`);
-  process.exit(1);
-} else {
-  console.log(`\nBuild OK — ${files.length} file(s) compiled.`);
+const cmd = ['rolldown', 'src/main.ts', '--file', 'dist/bundle.js', '--format', 'iife'];
+const result = spawnSync('npx', cmd, { stdio: 'inherit' });
+
+if (result.status !== 0) {
+  process.exit(result.status ?? 1);
 }
+
+console.log('\nBuild OK — src/main.ts -> dist/bundle.js');

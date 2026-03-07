@@ -112,3 +112,11 @@ Photoreal car pass with CC0 texture sets:
 Codex local build hook:
 
 - **Project-local Codex hook config** — added `./.codex/config.toml` with a `PostToolUse` hook that matches `Write|Edit|MultiEdit` and runs `npm run build` after file writes/edits.
+
+# v.10
+
+Single-file bundling build update:
+
+- Build process now uses Rolldown with this command shape: `npx rolldown src/main.ts --file dist/bundle.js --format iife`
+- `build.mjs` clears existing `dist/*.js` artifacts before bundling
+- `index.html` now loads `dist/bundle.js` so runtime uses one JavaScript file from `dist`
