@@ -166,3 +166,12 @@ Touch intro start reliability:
 
 - Added explicit touch start listeners so a tap anywhere on-screen exits the intro/info message and starts the game on touch devices
 - Keeps keyboard start behavior unchanged while making mobile start interaction immediate and predictable
+
+# v.16
+
+Real-device touch compatibility hardening:
+
+- Reworked touch detection to handle real tablet/phone edge cases better (including iPad desktop-style user agents)
+- Added direct `touchstart/touchmove/touchend` fallback handlers in addition to pointer handlers for movement/action zones
+- Touch controls now auto-enable whenever a real touch interaction begins, even if coarse-pointer heuristics are inconsistent
+- Added event de-duplication on the `VIEW` button to prevent double toggles on browsers that emit both pointer and click/touch events

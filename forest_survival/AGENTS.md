@@ -11,11 +11,8 @@
 
 * Build command path: `npm run build` -> `node build.mjs`.
 * `build.mjs` runs Rolldown as: `npx rolldown src/main.ts --file dist/bundle.js --format iife`.
-* The build script removes stale `dist/*.js` files before writing new output.
-* Codex hook is configured in `.codex/config.toml`:
-  * `PostToolUse` matcher: `Write|Edit|MultiEdit`
-  * command: `npm run build 2>&1 | tail -20`
-* If the hook does not run for any reason, run `npm run build` manually.
+* In Codex/Gemini run `npm run build` manually.
+* In Claude there a hook is installed to run the build after every write/edit.
 
 # Folder structure
 

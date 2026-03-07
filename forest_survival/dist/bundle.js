@@ -1896,14 +1896,18 @@
 	//#region src/touch-controls.ts
 	const TAP_MS = 230;
 	const TAP_MOVE_PX = 18;
-	function isLikelyKeyboardlessDevice() {
-		const hasTouch = navigator.maxTouchPoints > 0 || "ontouchstart" in window;
+	let touchControlsEnabled = false;
+	function hasTouchCapability() {
+		return navigator.maxTouchPoints > 0 || "ontouchstart" in window;
+	}
+	function isLikelyTouchFirstDevice() {
 		const coarsePointer = window.matchMedia("(pointer: coarse)").matches || window.matchMedia("(any-pointer: coarse)").matches;
 		const mobileUA = /Android|iPhone|iPad|iPod|Mobile|Tablet/i.test(navigator.userAgent);
-		return hasTouch && (coarsePointer || mobileUA);
+		const ipadDesktopUA = navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1;
+		return hasTouchCapability() && (coarsePointer || mobileUA || ipadDesktopUA);
 	}
 	function initTouchControls(hooks) {
-		if (!isLikelyKeyboardlessDevice()) return;
+		if (!hasTouchCapability()) return;
 		const controlsEl = document.getElementById("touch-controls");
 		const zonesEl = document.getElementById("touch-zones");
 		const viewBtn = document.getElementById("touch-view-btn");
@@ -1927,46 +1931,92 @@
 			else keys.ArrowDown = true;
 		};
 		const enableTouchControls = () => {
+			if (touchControlsEnabled) return;
+			touchControlsEnabled = true;
 			gameState.inputProfile = "touch";
 			controlsEl.style.display = "block";
 		};
 		let movementPointerId = null;
+		let movementTouchId = null;
+		let activeInputMode = null;
 		let downX = 0;
 		let downY = 0;
 		let downTs = 0;
-		viewBtn.addEventListener("click", (ev) => {
-			ev.preventDefault();
+		const beginMovement = (x, y) => {
 			hooks.onStart();
-			hooks.onToggleCamera();
-		});
-		zonesEl.addEventListener("pointerdown", (ev) => {
-			ev.preventDefault();
-			hooks.onStart();
-			if (movementPointerId !== null) return;
-			movementPointerId = ev.pointerId;
-			downX = ev.clientX;
-			downY = ev.clientY;
+			downX = x;
+			downY = y;
 			downTs = performance.now();
-			zonesEl.setPointerCapture(ev.pointerId);
-			setDirectionFromPoint(ev.clientX, ev.clientY);
-		});
-		zonesEl.addEventListener("pointermove", (ev) => {
-			if (movementPointerId !== ev.pointerId) return;
-			ev.preventDefault();
-			setDirectionFromPoint(ev.clientX, ev.clientY);
-		});
-		const finishMovementPointer = (ev) => {
-			if (movementPointerId !== ev.pointerId) return;
+			setDirectionFromPoint(x, y);
+		};
+		const endMovement = (x, y) => {
 			const elapsed = performance.now() - downTs;
-			const moved = Math.hypot(ev.clientX - downX, ev.clientY - downY);
-			movementPointerId = null;
+			const moved = Math.hypot(x - downX, y - downY);
 			clearDirectionalKeys();
-			if (zonesEl.hasPointerCapture(ev.pointerId)) zonesEl.releasePointerCapture(ev.pointerId);
+			activeInputMode = null;
 			if (elapsed <= TAP_MS && moved <= TAP_MOVE_PX) hooks.onAction();
 		};
-		zonesEl.addEventListener("pointerup", finishMovementPointer);
-		zonesEl.addEventListener("pointercancel", finishMovementPointer);
-		enableTouchControls();
+		let lastViewTapAt = 0;
+		const onViewTap = (ev) => {
+			ev.preventDefault();
+			const now = performance.now();
+			if (now - lastViewTapAt < 220) return;
+			lastViewTapAt = now;
+			hooks.onStart();
+			hooks.onToggleCamera();
+		};
+		viewBtn.addEventListener("pointerdown", onViewTap);
+		viewBtn.addEventListener("touchstart", onViewTap, { passive: false });
+		viewBtn.addEventListener("click", onViewTap);
+		zonesEl.addEventListener("pointerdown", (ev) => {
+			if (activeInputMode && activeInputMode !== "pointer") return;
+			ev.preventDefault();
+			enableTouchControls();
+			activeInputMode = "pointer";
+			movementPointerId = ev.pointerId;
+			zonesEl.setPointerCapture(ev.pointerId);
+			beginMovement(ev.clientX, ev.clientY);
+		});
+		zonesEl.addEventListener("pointermove", (ev) => {
+			if (activeInputMode !== "pointer" || movementPointerId !== ev.pointerId) return;
+			ev.preventDefault();
+			setDirectionFromPoint(ev.clientX, ev.clientY);
+		});
+		const finishPointerMovement = (ev) => {
+			if (activeInputMode !== "pointer" || movementPointerId !== ev.pointerId) return;
+			movementPointerId = null;
+			if (zonesEl.hasPointerCapture(ev.pointerId)) zonesEl.releasePointerCapture(ev.pointerId);
+			endMovement(ev.clientX, ev.clientY);
+		};
+		zonesEl.addEventListener("pointerup", finishPointerMovement);
+		zonesEl.addEventListener("pointercancel", finishPointerMovement);
+		zonesEl.addEventListener("touchstart", (ev) => {
+			if (activeInputMode && activeInputMode !== "touch") return;
+			if (ev.touches.length === 0) return;
+			ev.preventDefault();
+			enableTouchControls();
+			const touch = ev.changedTouches[0];
+			activeInputMode = "touch";
+			movementTouchId = touch.identifier;
+			beginMovement(touch.clientX, touch.clientY);
+		}, { passive: false });
+		zonesEl.addEventListener("touchmove", (ev) => {
+			if (activeInputMode !== "touch" || movementTouchId === null) return;
+			const touch = Array.from(ev.changedTouches).find((t) => t.identifier === movementTouchId);
+			if (!touch) return;
+			ev.preventDefault();
+			setDirectionFromPoint(touch.clientX, touch.clientY);
+		}, { passive: false });
+		const finishTouchMovement = (ev) => {
+			if (activeInputMode !== "touch" || movementTouchId === null) return;
+			const touch = Array.from(ev.changedTouches).find((t) => t.identifier === movementTouchId);
+			if (!touch) return;
+			movementTouchId = null;
+			endMovement(touch.clientX, touch.clientY);
+		};
+		zonesEl.addEventListener("touchend", finishTouchMovement, { passive: false });
+		zonesEl.addEventListener("touchcancel", finishTouchMovement, { passive: false });
+		if (isLikelyTouchFirstDevice()) enableTouchControls();
 	}
 	//#endregion
 	//#region src/input.ts
