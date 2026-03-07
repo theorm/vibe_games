@@ -1,0 +1,11 @@
+{
+  "scripts": {
+    "build": "node build.mjs",
+    "oxnode": "node build.mjs",
+    "serve": "node serve.mjs"
+  },
+  "devDependencies": {
+    "@oxc-node/cli": "^0.0.35",
+    "@types/three": "^0.183.1"
+  }
+}

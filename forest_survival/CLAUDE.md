@@ -1,0 +1,1 @@
+Content is in @./AGENTS.md

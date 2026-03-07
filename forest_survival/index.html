@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Forest Survival</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #000; overflow: hidden; font-family: 'Courier New', monospace; }
+  #canvas { display: block; }
+  #ui { position: fixed; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 10; }
+  #hud { position: fixed; top: 16px; left: 16px; color: #fff; text-shadow: 2px 2px 0 #000; font-size: 13px; line-height: 1.8; }
+  #health-bar-wrap { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+  #health-bar { width: 160px; height: 14px; background: #333; border: 2px solid #666; }
+  #health-fill { height: 100%; background: #e74c3c; transition: width 0.3s; }
+  #deer-bar-wrap { display: flex; align-items: center; gap: 8px; }
+  #deer-bar { width: 160px; height: 14px; background: #333; border: 2px solid #666; }
+  #deer-fill { height: 100%; background: #8b4513; transition: width 0.3s; }
+  #inventory { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); display: flex; gap: 6px; }
+  .inv-slot { width: 52px; height: 52px; background: rgba(0,0,0,0.7); border: 2px solid #555; display: flex; flex-direction: column; align-items: center; justify-content: center; color: #fff; font-size: 10px; text-align: center; text-shadow: 1px 1px 0 #000; }
+  .inv-slot .icon { font-size: 20px; line-height: 1; }
+  #message { position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%); color: #fff; font-size: 17px; text-align: center; text-shadow: 2px 2px 0 #000; background: rgba(0,0,0,0.8); padding: 20px 28px; border: 2px solid #888; max-width: 480px; line-height: 1.7; display: none; z-index: 30; }
+  #crosshair { position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%); width: 20px; height: 20px; pointer-events: none; }
+  #crosshair::before, #crosshair::after { content: ''; position: absolute; background: rgba(255,255,255,0.8); }
+  #crosshair::before { width: 2px; height: 100%; left: 50%; top: 0; transform: translateX(-50%); }
+  #crosshair::after { height: 2px; width: 100%; top: 50%; left: 0; transform: translateY(-50%); }
+  #objective { position: fixed; top: 16px; right: 16px; color: #ffe; font-size: 12px; text-shadow: 1px 1px 0 #000; text-align: right; max-width: 220px; line-height: 1.7; }
+  #objective div { opacity: 0.5; }
+  #objective div.active { opacity: 1; color: #ffd700; }
+  #objective div.done { opacity: 0.35; text-decoration: line-through; color: #aaa; }
+  #action-hint { position: fixed; bottom: 90px; left: 50%; transform: translateX(-50%); color: #fff; font-size: 13px; text-shadow: 1px 1px 0 #000; background: rgba(0,0,0,0.55); padding: 4px 14px; border: 1px solid #666; white-space: nowrap; }
+  #minimap { position: fixed; bottom: 16px; right: 16px; width: 110px; height: 110px; border: 2px solid #555; background: rgba(0,0,0,0.6); overflow: hidden; }
+  #minimap canvas { width: 100%; height: 100%; }
+  #screen-flash { position: fixed; top:0;left:0;width:100%;height:100%; pointer-events:none; opacity:0; z-index:20; transition: opacity 0.1s; }
+  #event-banner { position: fixed; top: 76px; left: 50%; transform: translateX(-50%); color: #fff; font-size: 20px; font-weight: bold; text-shadow: 0 0 12px currentColor, 2px 2px 0 #000; background: rgba(0,0,0,0.75); padding: 8px 24px; border: 2px solid #f00; display: none; letter-spacing: 2px; animation: pulse 0.7s infinite alternate; z-index: 25; }
+  @keyframes pulse { from { opacity: 1; } to { opacity: 0.6; } }
+  #car-hint { position: fixed; bottom: 118px; left: 50%; transform: translateX(-50%); color: #0ff; font-size: 13px; text-shadow: 1px 1px 0 #000; background: rgba(0,0,60,0.75); padding: 4px 14px; border: 1px solid #0af; display: none; }
+  #clock { position: fixed; top: 16px; left: 50%; transform: translateX(-50%); color: #ffe; font-size: 13px; text-shadow: 1px 1px 0 #000; background: rgba(0,0,0,0.45); padding: 2px 14px; border: 1px solid #555; }
+</style>
+</head>
+<body>
+<canvas id="canvas"></canvas>
+<div id="ui">
+  <div id="hud">
+    <div id="health-bar-wrap">❤️ <div id="health-bar"><div id="health-fill" style="width:100%"></div></div> <span id="health-text">100</span></div>
+    <div id="deer-bar-wrap">🦌 <div id="deer-bar"><div id="deer-fill" style="width:100%"></div></div> <span id="deer-text">100</span></div>
+    <div id="resource-info" style="margin-top:8px;font-size:12px;"></div>
+  </div>
+  <div id="clock">☀️ Day</div>
+  <div id="inventory"></div>
+  <div id="crosshair"></div>
+  <div id="message"></div>
+  <div id="event-banner"></div>
+  <div id="car-hint"></div>
+  <div id="objective">
+    <div id="obj0" class="active">🪓 Chop trees (5 wood)</div>
+    <div id="obj1">🔨 Build workbench (safe zone)</div>
+    <div id="obj2">⛏️ Craft pickaxe → mine ore</div>
+    <div id="obj3">🗡️ Forge sword (3 ore+2 wood)</div>
+    <div id="obj4">☠️ Kill the deer</div>
+  </div>
+  <div id="action-hint"></div>
+  <div id="minimap"><canvas id="mm" width="110" height="110"></canvas></div>
+  <div id="screen-flash"></div>
+</div>
+<!-- Three.js r128 from CDN — loaded as a global before ES modules execute -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script type="module" src="dist/main.js"></script>
+</body>
+</html>

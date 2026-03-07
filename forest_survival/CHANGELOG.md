@@ -1,0 +1,114 @@
+# v.1
+
+Here's your Forest Survival game built with Three.js! 🌲
+How to play:
+
+← → to turn, ↑ ↓ to move, SPACE to action
+The minimap (bottom-right) shows your position (blue), the deer (red), and mines (grey)
+
+Progression path:
+
+🪓 Chop trees (SPACE near them) to get wood
+🏠 Walk to the safe zone (green circle center), SPACE to build Workbench (5 wood)
+⛏️ At the Workbench, SPACE to craft Pickaxe (3 wood)
+⛰️ Find the grey rock mines deep in the forest, SPACE to mine ore
+🗡️ Back at the Workbench, forge the Sword (3 ore + 2 wood)
+☠️ Hunt the deer and press SPACE to attack (4 hits kills it!)
+
+Features:
+
+The deer has glowing red eyes and a staggering walk — it chases you when close
+The deer can't enter the safe zone or deforested areas
+HP regenerates slowly in the safe zone
+Screen flashes red when the deer attacks you
+
+# v.2
+
+All three changes are in. Here's what changed:
+1. Controls swapped — Left arrow now turns right, right arrow turns left. Same swap applied to the car steering.
+2. Workbench / ore bug fixed — The crafting logic was restructured so it's now a clean priority chain: when you press SPACE at the workbench it checks in order — craft pickaxe first (3 wood), then forge sword (3 ore + 2 wood). The hint text now always shows exactly what you have vs. what you need, so you always know what's missing.
+3. New emergency features:
+
+🚗 Red car is parked inside the safe zone. Walk up and press SPACE to get in, drive with arrows, SPACE to exit. The car runs over aliens and zombies.
+🧟 Zombies spawn from the lab (visible down the road to the right) every time dawn hits. They lurch toward you with outstretched arms and a zombie limp.
+👽 Aliens land randomly every 60–150 seconds, arriving from outside the forest. They float in with a UFO disk above them and a green tractor beam.
+A day/night cycle (2 min loop) with a changing sky — you can see on the clock when dawn is approaching. The minimap shows aliens (green), zombies (orange), and the lab (glowing green square).
+
+# v.3
+
+All sound is procedurally synthesized with Web Audio API — no external files needed. Here's what was added:
+🎻 Background Music — three layered voices playing simultaneously:
+
+Violin — spooky minor-key phrases (C natural minor) built from a sawtooth wave with vibrato and a bandpass filter simulating bowing
+Ocarina — hollow sine-wave duet, slightly off-pitch for that unsettling character, plays eerie counter-melodies
+Drone — two detuned sawtooth waves slowly swelling in volume, plus random pizzicato low-string plucks
+Everything runs through a convolution reverb for atmospheric depth
+
+🦌 Deer sounds — two types:
+
+Wandering: haunting modulated howl with pitch wavering up and down, drenched in reverb
+Chasing/Attacking: distorted guttural screech (waveshaper distortion + descending sawtooth) followed by a high harmonic shriek, plus a low-frequency impact thud on each hit
+
+😄 Player sounds — trigger randomly every 8–20 seconds:
+
+Burp: voiced noise burst with pitch-modulated sine + bandpass filter
+Whistle: two-note breathy sine melody (slightly airy from a high-frequency mix)
+Fart: flutter-modulated low noise with randomized frequency and duration
+
+Each sound also shows a floating emoji text (burp, whistle, pfffft) that fades upward.
+
+# v.4
+
+Refactored the game from a single monolithic HTML file into a modular TypeScript codebase:
+
+- All game logic moved from inline `<script>` in `forest_survival_1.html` into 14 TypeScript modules under `src/`
+- Modules: `constants`, `state`, `scene`, `world`, `player`, `deer`, `car`, `enemies`, `workbench`, `ui`, `audio`, `input`, `camera`, `main`
+- Compiled to `dist/` via OXC (`npm run build`) using `@oxc-node/core` transform API
+- New `index.html` loads Three.js r128 from CDN as a global, then imports `dist/main.js` as an ES module
+- `@types/three` used for TypeScript type information (`declare const THREE: typeof import('three')`)
+- PostToolUse hook installed in `.claude/settings.json` to auto-run `npm run build` after every file edit
+- Added `serve.mjs` minimal HTTP dev server (`npm run serve` → http://localhost:3000) required because ES modules cannot load over `file://`
+
+# v.5
+
+Car overhaul:
+
+- **Fixed car driving direction** — the car was driving sideways because the model's front (+X axis) wasn't aligned with the movement direction (-Z). Fixed the rotation offset from `+ Math.PI` to `+ Math.PI / 2`. Also fixed wheel spin animation targeting wrong child indices.
+- **Realistic shiny car** — replaced flat `MeshLambertMaterial` with `MeshPhysicalMaterial` featuring metalness, clearcoat, and low roughness for a glossy car paint finish. Added chrome bumpers, side mirrors, roof rails, side skirts, alloy rims inside tires, spherical headlights with emissive glow, red emissive taillights, a dark grille, and tinted glass windows with slight transmission.
+- **Driver's view toggle** — press **V** while in the car to switch between third-person and first-person driver's view. The driver camera sits inside the cabin looking forward. Press V again to return to third-person. View resets to third-person when exiting the car.
+
+# v.6
+
+Photorealistic car rebuild:
+
+- **Curved sedan body** — replaced boxy geometry with `ExtrudeGeometry` using a Bézier-curved sedan profile (hood slope, windshield sweep, roofline, trunk). Bevel smoothing on all edges.
+- **Environment map reflections** — `PMREMGenerator` captures the actual game scene (trees, sky, ground) as a cubemap and applies it to all shiny materials. The car now reflects its surroundings.
+- **Procedural textures** — canvas-generated normal maps: metallic flake pattern for paint (gives sparkle at close range), tread grooves for tires, and radial spoke pattern for alloy rims. No external dependencies.
+- **Detailed parts** — torus-profile tires, 5-spoke alloy wheels with center caps, lens-shaped headlights, chrome grille with horizontal slats, exhaust tips, door-line chrome strips, dark wheel arch trims, contact-shadow plane underneath.
+
+# v.7
+
+Car realism pass (sleeker + less washed out):
+
+- **PBR render pipeline fix** — enabled `sRGBEncoding` output and ACES tone mapping in the renderer, then rebalanced ambient/sun/fill light so glossy materials keep detail instead of clipping to flat white.
+- **New sports-sedan build** — replaced the previous body composition with a cleaner extruded silhouette plus refined hood/roof/trunk proportions, panel lines, door handles, wheel arches, and trim.
+- **Better materials and reflections** — retuned automotive paint (`MeshPhysicalMaterial` clearcoat), glass, chrome, rims, and tire shaders; added higher fidelity procedural normal/roughness textures and a studio-style PMREM environment map for controlled highlights.
+- **Wheel animation cleanup** — removed brittle child-index wheel updates and switched to explicit wheel/steering references for stable spin + front wheel steer visuals.
+- **Build script alias** — added `npm run oxnode` as an alias to the OXC build pipeline so TypeScript→`dist/` compilation follows the AGENTS workflow directly.
+
+# v.8
+
+Photoreal car pass with CC0 texture sets:
+
+- **Real texture pipeline** — downloaded and integrated Poly Haven CC0 1K PBR maps (`metal_plate_02`, `rubber_tiles`, `leather_red_02`) into project-local assets under `assets/textures/car/`.
+- **Material upgrade** — chrome/rims/trim now use real albedo + normal + ARM maps; tires use rubber albedo + normal + ARM maps; paint keeps procedural flake normals with stronger clearcoat layering.
+- **Interior detail pass** — added visible cabin geometry (dashboard, console, steering wheel, front/rear seats + headrests) with textured leather/plastic so the glass reads as a real enclosure.
+- **Front fascia refinement** — added lower intake fins and front splitter to improve silhouette and close-up realism.
+- **Lighting model improvement** — enabled `renderer.physicallyCorrectLights` to improve energy response for PBR materials under the scene lighting/tone mapping setup.
+- **Asset attribution** — added `assets/textures/car/CREDITS.md` with Poly Haven source/license references for imported CC0 maps.
+
+# v.9
+
+Codex local build hook:
+
+- **Project-local Codex hook config** — added `./.codex/config.toml` with a `PostToolUse` hook that matches `Write|Edit|MultiEdit` and runs `npm run build` after file writes/edits.

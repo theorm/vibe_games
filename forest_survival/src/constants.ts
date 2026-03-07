@@ -1,0 +1,15 @@
+export const FOREST_R     = 50;
+export const SAFE_R       = 8;
+export const TREE_COUNT   = 60;
+export const MINE_COUNT   = 3;
+export const PLAYER_SPD   = 6;
+export const DEER_SPD     = 3.5;
+export const DEER_CHASE_R = 18;
+export const DEER_ATK_R   = 2.0;
+export const DEER_ATK_DMG = 12;
+export const DEER_ATK_INT = 1.8;
+export const PLAYER_ATK_R = 2.5;
+export const CHOP_RANGE   = 2.8;
+export const DAY_LEN      = 120; // seconds per full day
+export const CAR_SPD      = 14;
+export const CAR_TURN     = 2.2;

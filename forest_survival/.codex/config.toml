@@ -1,0 +1,4 @@
+[[hooks]]
+event = "PostToolUse"
+matcher = "Write|Edit|MultiEdit"
+command = "npm run build 2>&1 | tail -20"
