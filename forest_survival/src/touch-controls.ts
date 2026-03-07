@@ -7,34 +7,54 @@ interface TouchControlHooks {
   onToggleCamera: () => void;
 }
 
+export interface TouchDetectionInfo {
+  hasTouchCapability: boolean;
+  likelyTouchFirstDevice: boolean;
+  maxTouchPoints: number;
+}
+
 const TAP_MS = 230;
 const TAP_MOVE_PX = 18;
 
 let touchControlsEnabled = false;
+let controlsEl: HTMLElement | null = null;
+let zonesEl: HTMLElement | null = null;
+let viewBtn: HTMLElement | null = null;
 
-function hasTouchCapability(): boolean {
-  return navigator.maxTouchPoints > 0 || 'ontouchstart' in window;
-}
-
-function isLikelyTouchFirstDevice(): boolean {
+function readDetectionInfo(): TouchDetectionInfo {
+  const maxTouchPoints = navigator.maxTouchPoints || 0;
+  const hasTouchCapability = maxTouchPoints > 0 || 'ontouchstart' in window;
   const coarsePointer =
     window.matchMedia('(pointer: coarse)').matches ||
     window.matchMedia('(any-pointer: coarse)').matches;
   const mobileUA = /Android|iPhone|iPad|iPod|Mobile|Tablet/i.test(navigator.userAgent);
-  const ipadDesktopUA = navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1;
-  return hasTouchCapability() && (coarsePointer || mobileUA || ipadDesktopUA);
+  const ipadDesktopUA = navigator.platform === 'MacIntel' && maxTouchPoints > 1;
+  const likelyTouchFirstDevice = hasTouchCapability && (coarsePointer || mobileUA || ipadDesktopUA);
+  return { hasTouchCapability, likelyTouchFirstDevice, maxTouchPoints };
+}
+
+export function getTouchDetectionInfo(): TouchDetectionInfo {
+  return readDetectionInfo();
 }
 
 export function isTouchControlsEnabled(): boolean {
   return touchControlsEnabled;
 }
 
-export function initTouchControls(hooks: TouchControlHooks): void {
-  if (!hasTouchCapability()) return;
+export function forceEnableTouchControls(): boolean {
+  if (!controlsEl) return false;
+  if (!touchControlsEnabled) {
+    touchControlsEnabled = true;
+    gameState.inputProfile = 'touch';
+    controlsEl.style.display = 'block';
+  }
+  return true;
+}
 
-  const controlsEl = document.getElementById('touch-controls');
-  const zonesEl = document.getElementById('touch-zones');
-  const viewBtn = document.getElementById('touch-view-btn');
+export function initTouchControls(hooks: TouchControlHooks): void {
+  controlsEl = document.getElementById('touch-controls');
+  zonesEl = document.getElementById('touch-zones');
+  viewBtn = document.getElementById('touch-view-btn');
   if (!controlsEl || !zonesEl || !viewBtn) return;
 
   const clearDirectionalKeys = (): void => {
@@ -55,13 +75,6 @@ export function initTouchControls(hooks: TouchControlHooks): void {
     }
     if (dy < 0) keys.ArrowUp = true;
     else keys.ArrowDown = true;
-  };
-
-  const enableTouchControls = (): void => {
-    if (touchControlsEnabled) return;
-    touchControlsEnabled = true;
-    gameState.inputProfile = 'touch';
-    controlsEl.style.display = 'block';
   };
 
   let movementPointerId: number | null = null;
@@ -104,10 +117,10 @@ export function initTouchControls(hooks: TouchControlHooks): void {
   zonesEl.addEventListener('pointerdown', (ev: PointerEvent) => {
     if (activeInputMode && activeInputMode !== 'pointer') return;
     ev.preventDefault();
-    enableTouchControls();
+    forceEnableTouchControls();
     activeInputMode = 'pointer';
     movementPointerId = ev.pointerId;
-    zonesEl.setPointerCapture(ev.pointerId);
+    zonesEl!.setPointerCapture(ev.pointerId);
     beginMovement(ev.clientX, ev.clientY);
   });
 
@@ -120,7 +133,7 @@ export function initTouchControls(hooks: TouchControlHooks): void {
   const finishPointerMovement = (ev: PointerEvent): void => {
     if (activeInputMode !== 'pointer' || movementPointerId !== ev.pointerId) return;
     movementPointerId = null;
-    if (zonesEl.hasPointerCapture(ev.pointerId)) zonesEl.releasePointerCapture(ev.pointerId);
+    if (zonesEl!.hasPointerCapture(ev.pointerId)) zonesEl!.releasePointerCapture(ev.pointerId);
     endMovement(ev.clientX, ev.clientY);
   };
 
@@ -131,7 +144,7 @@ export function initTouchControls(hooks: TouchControlHooks): void {
     if (activeInputMode && activeInputMode !== 'touch') return;
     if (ev.touches.length === 0) return;
     ev.preventDefault();
-    enableTouchControls();
+    forceEnableTouchControls();
     const touch = ev.changedTouches[0];
     activeInputMode = 'touch';
     movementTouchId = touch.identifier;
@@ -157,5 +170,6 @@ export function initTouchControls(hooks: TouchControlHooks): void {
   zonesEl.addEventListener('touchend', finishTouchMovement, { passive: false });
   zonesEl.addEventListener('touchcancel', finishTouchMovement, { passive: false });
 
-  if (isLikelyTouchFirstDevice()) enableTouchControls();
+  const detection = readDetectionInfo();
+  if (detection.likelyTouchFirstDevice) forceEnableTouchControls();
 }

@@ -175,3 +175,13 @@ Real-device touch compatibility hardening:
 - Added direct `touchstart/touchmove/touchend` fallback handlers in addition to pointer handlers for movement/action zones
 - Touch controls now auto-enable whenever a real touch interaction begins, even if coarse-pointer heuristics are inconsistent
 - Added event de-duplication on the `VIEW` button to prevent double toggles on browsers that emit both pointer and click/touch events
+
+# v.17
+
+Touch fallback + mobile zoom prevention:
+
+- Added visible touch-detection status text to the intro message so players can see whether touch was detected
+- Added an explicit `Enable Touch Controls` intro button to manually force touch mode when auto-detection fails
+- Touch taps anywhere now also attempt to force-enable touch controls before starting the game
+- Added mobile viewport config (`user-scalable=no`, `maximum-scale=1`) and CSS touch/overscroll guards to reduce accidental page zooming during gameplay
+- Added iOS gesture guards (`gesturestart`/`gesturechange`) to further prevent pinch/double-tap zoom behavior

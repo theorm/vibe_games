@@ -11,7 +11,12 @@ import { deer } from './deer.js';
 import { placeWorkbench } from './workbench.js';
 import { sfxChop, sfxSwing, sfxCraft, initAudio, startDeerYells } from './audio.js';
 import { setActionHint, showMessage, hideMessage, updateHUD } from './ui.js';
-import { initTouchControls } from './touch-controls.js';
+import {
+  initTouchControls,
+  forceEnableTouchControls,
+  getTouchDetectionInfo,
+  isTouchControlsEnabled,
+} from './touch-controls.js';
 
 function actionControlName(): string {
   return gameState.inputProfile === 'touch' ? 'TAP' : 'SPACE';
@@ -211,6 +216,12 @@ let introShown = true;
 
 export function initInput(onFirstKey: () => void): void {
   let started = false;
+  const touchInfoEl = (): HTMLElement | null => document.getElementById('touch-detect-line');
+  const setTouchInfo = (txt: string): void => {
+    const el = touchInfoEl();
+    if (el) el.textContent = txt;
+  };
+
   const startGameFromInput = (): void => {
     if (started) return;
     started = true;
@@ -229,19 +240,51 @@ export function initInput(onFirstKey: () => void): void {
   });
   window.addEventListener('keyup', e => { keys[e.key] = false; });
 
-  // Touch devices should be able to start by tapping anywhere on screen.
-  window.addEventListener('pointerdown', (e: PointerEvent) => {
-    if (e.pointerType === 'touch') startGameFromInput();
-  });
-  window.addEventListener('touchstart', () => {
-    startGameFromInput();
-  }, { passive: true });
-
   initTouchControls({
     onStart: startGameFromInput,
     onAction: handleAction,
     onToggleCamera: toggleCarCameraView,
   });
+
+  const detection = getTouchDetectionInfo();
+  if (isTouchControlsEnabled()) {
+    setTouchInfo(`Touch detected (${detection.maxTouchPoints} points): controls enabled.`);
+  } else if (detection.hasTouchCapability) {
+    setTouchInfo(`Touch detected (${detection.maxTouchPoints} points): tap "Enable Touch Controls" if controls are not active.`);
+  } else {
+    setTouchInfo('Touch not detected automatically. If you are on a phone/tablet, tap "Enable Touch Controls".');
+  }
+
+  const manualTouchBtn = document.getElementById('touch-manual-enable');
+  if (manualTouchBtn) {
+    manualTouchBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      const enabled = forceEnableTouchControls();
+      if (enabled) {
+        setTouchInfo('Touch controls enabled manually.');
+        setActionHint('Touch controls active: use screen zones to move, TAP for action, VIEW for camera.');
+        startGameFromInput();
+      } else {
+        setTouchInfo('Could not enable touch controls in this build.');
+      }
+    });
+  }
+
+  // Touch devices should be able to start by tapping anywhere on screen.
+  window.addEventListener('pointerdown', (e: PointerEvent) => {
+    if (e.pointerType === 'touch') {
+      forceEnableTouchControls();
+      startGameFromInput();
+    }
+  });
+  window.addEventListener('touchstart', () => {
+    forceEnableTouchControls();
+    startGameFromInput();
+  }, { passive: true });
+
+  // iOS Safari pinch/double-tap gesture guards for full-screen gameplay.
+  document.addEventListener('gesturestart', (e: Event) => e.preventDefault());
+  document.addEventListener('gesturechange', (e: Event) => e.preventDefault());
 }
 
 export { introShown };

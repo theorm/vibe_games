@@ -38,6 +38,8 @@ showMessage(
   <em>A vicious deer stalks the woods...<br>also aliens, and zombies from the lab.</em><br><br>
   <b>← → Turn &nbsp;&nbsp; ↑ ↓ Move &nbsp;&nbsp; SPACE Action</b><br>
   <b>Phone/Tablet: full-screen zones to move/steer, tap for action, VIEW button for car camera</b><br><br>
+  <div id="touch-detect-line" style="font-size:12px;color:#9fd;">Touch detection: checking...</div>
+  <button id="touch-manual-enable" class="touch-intro-btn">Enable Touch Controls</button><br><br>
   Chop trees → build workbench → craft pickaxe<br>→ mine ore → forge sword → kill deer<br><br>
   🚗 Red car parked in the safe zone for emergencies<br>
   🧟 Zombies invade from the lab at dawn<br>

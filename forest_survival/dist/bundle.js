@@ -1897,20 +1897,40 @@
 	const TAP_MS = 230;
 	const TAP_MOVE_PX = 18;
 	let touchControlsEnabled = false;
-	function hasTouchCapability() {
-		return navigator.maxTouchPoints > 0 || "ontouchstart" in window;
-	}
-	function isLikelyTouchFirstDevice() {
+	let controlsEl = null;
+	let zonesEl = null;
+	let viewBtn = null;
+	function readDetectionInfo() {
+		const maxTouchPoints = navigator.maxTouchPoints || 0;
+		const hasTouchCapability = maxTouchPoints > 0 || "ontouchstart" in window;
 		const coarsePointer = window.matchMedia("(pointer: coarse)").matches || window.matchMedia("(any-pointer: coarse)").matches;
 		const mobileUA = /Android|iPhone|iPad|iPod|Mobile|Tablet/i.test(navigator.userAgent);
-		const ipadDesktopUA = navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1;
-		return hasTouchCapability() && (coarsePointer || mobileUA || ipadDesktopUA);
+		const ipadDesktopUA = navigator.platform === "MacIntel" && maxTouchPoints > 1;
+		return {
+			hasTouchCapability,
+			likelyTouchFirstDevice: hasTouchCapability && (coarsePointer || mobileUA || ipadDesktopUA),
+			maxTouchPoints
+		};
+	}
+	function getTouchDetectionInfo() {
+		return readDetectionInfo();
+	}
+	function isTouchControlsEnabled() {
+		return touchControlsEnabled;
+	}
+	function forceEnableTouchControls() {
+		if (!controlsEl) return false;
+		if (!touchControlsEnabled) {
+			touchControlsEnabled = true;
+			gameState.inputProfile = "touch";
+			controlsEl.style.display = "block";
+		}
+		return true;
 	}
 	function initTouchControls(hooks) {
-		if (!hasTouchCapability()) return;
-		const controlsEl = document.getElementById("touch-controls");
-		const zonesEl = document.getElementById("touch-zones");
-		const viewBtn = document.getElementById("touch-view-btn");
+		controlsEl = document.getElementById("touch-controls");
+		zonesEl = document.getElementById("touch-zones");
+		viewBtn = document.getElementById("touch-view-btn");
 		if (!controlsEl || !zonesEl || !viewBtn) return;
 		const clearDirectionalKeys = () => {
 			keys.ArrowLeft = false;
@@ -1929,12 +1949,6 @@
 			}
 			if (dy < 0) keys.ArrowUp = true;
 			else keys.ArrowDown = true;
-		};
-		const enableTouchControls = () => {
-			if (touchControlsEnabled) return;
-			touchControlsEnabled = true;
-			gameState.inputProfile = "touch";
-			controlsEl.style.display = "block";
 		};
 		let movementPointerId = null;
 		let movementTouchId = null;
@@ -1971,7 +1985,7 @@
 		zonesEl.addEventListener("pointerdown", (ev) => {
 			if (activeInputMode && activeInputMode !== "pointer") return;
 			ev.preventDefault();
-			enableTouchControls();
+			forceEnableTouchControls();
 			activeInputMode = "pointer";
 			movementPointerId = ev.pointerId;
 			zonesEl.setPointerCapture(ev.pointerId);
@@ -1994,7 +2008,7 @@
 			if (activeInputMode && activeInputMode !== "touch") return;
 			if (ev.touches.length === 0) return;
 			ev.preventDefault();
-			enableTouchControls();
+			forceEnableTouchControls();
 			const touch = ev.changedTouches[0];
 			activeInputMode = "touch";
 			movementTouchId = touch.identifier;
@@ -2016,7 +2030,7 @@
 		};
 		zonesEl.addEventListener("touchend", finishTouchMovement, { passive: false });
 		zonesEl.addEventListener("touchcancel", finishTouchMovement, { passive: false });
-		if (isLikelyTouchFirstDevice()) enableTouchControls();
+		if (readDetectionInfo().likelyTouchFirstDevice) forceEnableTouchControls();
 	}
 	//#endregion
 	//#region src/input.ts
@@ -2156,6 +2170,11 @@
 	let introShown = true;
 	function initInput(onFirstKey) {
 		let started = false;
+		const touchInfoEl = () => document.getElementById("touch-detect-line");
+		const setTouchInfo = (txt) => {
+			const el = touchInfoEl();
+			if (el) el.textContent = txt;
+		};
 		const startGameFromInput = () => {
 			if (started) return;
 			started = true;
@@ -2180,17 +2199,36 @@
 		window.addEventListener("keyup", (e) => {
 			keys[e.key] = false;
 		});
-		window.addEventListener("pointerdown", (e) => {
-			if (e.pointerType === "touch") startGameFromInput();
-		});
-		window.addEventListener("touchstart", () => {
-			startGameFromInput();
-		}, { passive: true });
 		initTouchControls({
 			onStart: startGameFromInput,
 			onAction: handleAction,
 			onToggleCamera: toggleCarCameraView
 		});
+		const detection = getTouchDetectionInfo();
+		if (isTouchControlsEnabled()) setTouchInfo(`Touch detected (${detection.maxTouchPoints} points): controls enabled.`);
+		else if (detection.hasTouchCapability) setTouchInfo(`Touch detected (${detection.maxTouchPoints} points): tap "Enable Touch Controls" if controls are not active.`);
+		else setTouchInfo("Touch not detected automatically. If you are on a phone/tablet, tap \"Enable Touch Controls\".");
+		const manualTouchBtn = document.getElementById("touch-manual-enable");
+		if (manualTouchBtn) manualTouchBtn.addEventListener("click", (e) => {
+			e.preventDefault();
+			if (forceEnableTouchControls()) {
+				setTouchInfo("Touch controls enabled manually.");
+				setActionHint("Touch controls active: use screen zones to move, TAP for action, VIEW for camera.");
+				startGameFromInput();
+			} else setTouchInfo("Could not enable touch controls in this build.");
+		});
+		window.addEventListener("pointerdown", (e) => {
+			if (e.pointerType === "touch") {
+				forceEnableTouchControls();
+				startGameFromInput();
+			}
+		});
+		window.addEventListener("touchstart", () => {
+			forceEnableTouchControls();
+			startGameFromInput();
+		}, { passive: true });
+		document.addEventListener("gesturestart", (e) => e.preventDefault());
+		document.addEventListener("gesturechange", (e) => e.preventDefault());
 	}
 	//#endregion
 	//#region src/main.ts
@@ -2212,6 +2250,8 @@
   <em>A vicious deer stalks the woods...<br>also aliens, and zombies from the lab.</em><br><br>
   <b>← → Turn &nbsp;&nbsp; ↑ ↓ Move &nbsp;&nbsp; SPACE Action</b><br>
   <b>Phone/Tablet: full-screen zones to move/steer, tap for action, VIEW button for car camera</b><br><br>
+  <div id="touch-detect-line" style="font-size:12px;color:#9fd;">Touch detection: checking...</div>
+  <button id="touch-manual-enable" class="touch-intro-btn">Enable Touch Controls</button><br><br>
   Chop trees → build workbench → craft pickaxe<br>→ mine ore → forge sword → kill deer<br><br>
   🚗 Red car parked in the safe zone for emergencies<br>
   🧟 Zombies invade from the lab at dawn<br>
