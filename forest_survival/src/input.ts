@@ -229,6 +229,14 @@ export function initInput(onFirstKey: () => void): void {
   });
   window.addEventListener('keyup', e => { keys[e.key] = false; });
 
+  // Touch devices should be able to start by tapping anywhere on screen.
+  window.addEventListener('pointerdown', (e: PointerEvent) => {
+    if (e.pointerType === 'touch') startGameFromInput();
+  });
+  window.addEventListener('touchstart', () => {
+    startGameFromInput();
+  }, { passive: true });
+
   initTouchControls({
     onStart: startGameFromInput,
     onAction: handleAction,

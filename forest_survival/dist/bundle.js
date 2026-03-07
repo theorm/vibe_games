@@ -2130,6 +2130,12 @@
 		window.addEventListener("keyup", (e) => {
 			keys[e.key] = false;
 		});
+		window.addEventListener("pointerdown", (e) => {
+			if (e.pointerType === "touch") startGameFromInput();
+		});
+		window.addEventListener("touchstart", () => {
+			startGameFromInput();
+		}, { passive: true });
 		initTouchControls({
 			onStart: startGameFromInput,
 			onAction: handleAction,

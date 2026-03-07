@@ -159,3 +159,10 @@ Touch controls usability overhaul:
 - Added tap-based actions on the touch zones (single tap and repeated taps both trigger actions)
 - Kept a dedicated on-screen `VIEW` button for in-car camera switching
 - Updated touch control copy in intro/hints (`TAP` and `VIEW`) to match the new interaction model
+
+# v.15
+
+Touch intro start reliability:
+
+- Added explicit touch start listeners so a tap anywhere on-screen exits the intro/info message and starts the game on touch devices
+- Keeps keyboard start behavior unchanged while making mobile start interaction immediate and predictable
