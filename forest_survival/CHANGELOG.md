@@ -120,3 +120,12 @@ Single-file bundling build update:
 - Build process now uses Rolldown with this command shape: `npx rolldown src/main.ts --file dist/bundle.js --format iife`
 - `build.mjs` clears existing `dist/*.js` artifacts before bundling
 - `index.html` now loads `dist/bundle.js` so runtime uses one JavaScript file from `dist`
+
+# v.11
+
+Project cleanup after switching to single-file bundle output:
+
+- Removed `serve.mjs` and dropped the `serve` npm script
+- Removed unused `@oxc-node/cli` dev dependency
+- Deleted legacy `forest_survival_1.html`
+- Removed empty temporary directory `tmp/`
