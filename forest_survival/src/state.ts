@@ -47,6 +47,7 @@ export const gameState = {
   inCar: false,
   carFacing: 0,
   driverView: false,
+  inputProfile: 'keyboard' as 'keyboard' | 'touch',
   // Deer state mirrored here so audio.ts can read it without importing deer.ts
   deerState: 'wander' as string,
   deerAlive: true,

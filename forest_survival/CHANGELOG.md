@@ -129,3 +129,23 @@ Project cleanup after switching to single-file bundle output:
 - Removed unused `@oxc-node/cli` dev dependency
 - Deleted legacy `forest_survival_1.html`
 - Removed empty temporary directory `tmp/`
+
+# v.12
+
+Touch fallback controls for keyboard-less devices:
+
+- Added `src/touch-controls.ts` to detect likely phone/tablet environments (`maxTouchPoints` + coarse pointer/mobile UA) and offer an on-screen control scheme
+- Added a touch controls offer panel in `index.html` with Enable/Dismiss actions
+- Added virtual trackpad movement/steering input that maps to existing arrow-key gameplay logic
+- Added on-screen `ACTION` and `CAM` buttons for interact/attack and in-car camera toggling
+- Added `gameState.inputProfile` (`keyboard`/`touch`) so gameplay hints and car hints can adapt to active controls
+- Updated intro/help text and interaction strings to show touch-friendly labels when touch controls are enabled
+
+# v.13
+
+AGENTS.md maintenance pass:
+
+- Updated build instructions to reflect the current Rolldown pipeline (`npm run build` / `npm run oxnode` -> `build.mjs` -> `dist/bundle.js`)
+- Documented Codex PostToolUse hook details from `.codex/config.toml` (`Write|Edit|MultiEdit` -> `npm run build 2>&1 | tail -20`)
+- Removed outdated references to OXC output naming, `dist/main.js`, and `serve.mjs`
+- Updated folder structure docs to match the current project layout and scripts

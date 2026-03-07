@@ -11,6 +11,36 @@ import { deer } from './deer.js';
 import { placeWorkbench } from './workbench.js';
 import { sfxChop, sfxSwing, sfxCraft, initAudio, startDeerYells } from './audio.js';
 import { setActionHint, showMessage, hideMessage, updateHUD } from './ui.js';
+import { initTouchControls } from './touch-controls.js';
+
+function actionControlName(): string {
+  return gameState.inputProfile === 'touch' ? 'ACTION' : 'SPACE';
+}
+
+function cameraControlName(): string {
+  return gameState.inputProfile === 'touch' ? 'CAM' : 'V';
+}
+
+function setDrivingHint(): void {
+  const movement = gameState.inputProfile === 'touch'
+    ? 'trackpad drive + steer'
+    : '↑↓ accelerate, ←→ steer';
+  setActionHint(`🚗 Driving! ${movement}, ${cameraControlName()} camera, ${actionControlName()} exit.`);
+}
+
+function toggleCarCameraView(): void {
+  if (!gameState.inCar) return;
+  gameState.driverView = !gameState.driverView;
+  if (gameState.inputProfile === 'touch') {
+    setActionHint(gameState.driverView
+      ? '🚗 Driver view active — tap CAM to switch back'
+      : '🚗 Third-person view active — tap CAM for driver view');
+    return;
+  }
+  setActionHint(gameState.driverView
+    ? '🚗 Driver view — press V to switch back'
+    : '🚗 Third-person view — press V for driver view');
+}
 
 function handleAction(): void {
   if (gameState.gameOver || gameState.gameWon) return;
@@ -20,7 +50,7 @@ function handleAction(): void {
   if (!gameState.inCar && nearCar) {
     gameState.inCar = true;
     playerGroup.visible = false;
-    setActionHint('🚗 Driving! ↑↓ accelerate, ←→ steer, V camera, SPACE exit.');
+    setDrivingHint();
     return;
   }
   if (gameState.inCar) {
@@ -89,7 +119,7 @@ function handleAction(): void {
         gameState.resources.wood -= 3; gameState.hasPickaxe = true; gameState.stage = Math.max(gameState.stage, 2);
         sfxCraft();
         setActionHint('⛏️ Pickaxe crafted!');
-        showMessage('⛏️ <strong>Pickaxe crafted!</strong><br>Find grey rock formations (mines) deep in the forest.<br>Walk up close and press SPACE to mine ore!', 5000);
+        showMessage(`⛏️ <strong>Pickaxe crafted!</strong><br>Find grey rock formations (mines) deep in the forest.<br>Walk up close and press ${actionControlName()} to mine ore!`, 5000);
         updateHUD(deer, player);
       } else {
         setActionHint(`Need 3 wood for pickaxe — have ${gameState.resources.wood}`);
@@ -102,7 +132,7 @@ function handleAction(): void {
         gameState.hasSword = true; addSwordToPlayer(); gameState.stage = 4;
         sfxCraft();
         setActionHint('🗡️ Sword forged! Hunt the deer!');
-        showMessage('🗡️ <strong>SWORD FORGED!</strong><br>Hunt down the deer and press SPACE when close to attack it!', 5000);
+        showMessage(`🗡️ <strong>SWORD FORGED!</strong><br>Hunt down the deer and press ${actionControlName()} when close to attack it!`, 5000);
         updateHUD(deer, player);
       } else {
         setActionHint(`Sword needs 3 ore + 2 wood — have ore:${gameState.resources.ore} wood:${gameState.resources.wood}`);
@@ -118,8 +148,8 @@ function handleAction(): void {
       gameState.resources.wood -= 5;
       placeWorkbench(px + fwdX * 1.5, pz + fwdZ * 1.5);
       gameState.stage = Math.max(gameState.stage, 1);
-      setActionHint('🔨 Workbench placed! Walk up and press SPACE.');
-      showMessage('🔨 <strong>Workbench built!</strong><br>Walk up to it and press SPACE.<br>First craft: Pickaxe (3 wood) → mine ore → Sword (3 ore + 2 wood)', 5500);
+      setActionHint(`🔨 Workbench placed! Walk up and press ${actionControlName()}.`);
+      showMessage(`🔨 <strong>Workbench built!</strong><br>Walk up to it and press ${actionControlName()}.<br>First craft: Pickaxe (3 wood) → mine ore → Sword (3 ore + 2 wood)`, 5500);
       updateHUD(deer, player);
     } else {
       setActionHint(`Need 5 wood — have ${gameState.resources.wood}`);
@@ -134,40 +164,45 @@ function handleAction(): void {
 export function checkProgress(): void {
   if (gameState.resources.wood >= 5 && gameState.stage === 0) {
     gameState.stage = 1;
-    showMessage('🪵 <strong>Enough wood!</strong><br>Go to the safe zone (green circle in center).<br>Press SPACE to build a Workbench!', 5000);
+    showMessage(`🪵 <strong>Enough wood!</strong><br>Go to the safe zone (green circle in center).<br>Press ${actionControlName()} to build a Workbench!`, 5000);
   }
   if (gameState.resources.ore >= 3 && gameState.hasPickaxe && !gameState.hasSword && gameState.stage < 3) {
     gameState.stage = 3;
-    showMessage('⛰️ <strong>Enough ore!</strong><br>Return to the Workbench and press SPACE to forge the Sword!', 5000);
+    showMessage(`⛰️ <strong>Enough ore!</strong><br>Return to the Workbench and press ${actionControlName()} to forge the Sword!`, 5000);
   }
   updateHUD(deer, player);
 }
 
 export function updateContextHints(): void {
   if (gameState.gameOver || gameState.gameWon) return;
-  if (gameState.inCar) { setActionHint('🚗 Driving — V toggle camera, SPACE to exit'); return; }
+  if (gameState.inCar) {
+    if (gameState.inputProfile === 'touch') setActionHint('🚗 Driving — tap CAM for camera, ACTION to exit');
+    else setActionHint('🚗 Driving — V toggle camera, SPACE to exit');
+    return;
+  }
   const px = player.pos.x, pz = player.pos.z;
+  const action = actionControlName();
 
-  if (dist2D(px, pz, carPos.x, carPos.z) < 3) { setActionHint('[SPACE] Get in car 🚗'); return; }
-  if (gameState.hasSword && dist2D(px, pz, deer.pos.x, deer.pos.z) < PLAYER_ATK_R + 1.5) { setActionHint('[SPACE] ⚔️ ATTACK THE DEER!'); return; }
+  if (dist2D(px, pz, carPos.x, carPos.z) < 3) { setActionHint(`[${action}] Get in car 🚗`); return; }
+  if (gameState.hasSword && dist2D(px, pz, deer.pos.x, deer.pos.z) < PLAYER_ATK_R + 1.5) { setActionHint(`[${action}] ⚔️ ATTACK THE DEER!`); return; }
 
   const wb = gameState.workbenchPos;
   if (wb && dist2D(px, pz, wb.x, wb.z) < 2.5) {
-    if (!gameState.hasPickaxe) setActionHint(`[SPACE] Craft Pickaxe — need 3 wood (have ${gameState.resources.wood})`);
-    else if (!gameState.hasSword) setActionHint(`[SPACE] Forge Sword — need 3 ore+2 wood (have ${gameState.resources.ore} ore, ${gameState.resources.wood} wood)`);
+    if (!gameState.hasPickaxe) setActionHint(`[${action}] Craft Pickaxe — need 3 wood (have ${gameState.resources.wood})`);
+    else if (!gameState.hasSword) setActionHint(`[${action}] Forge Sword — need 3 ore+2 wood (have ${gameState.resources.ore} ore, ${gameState.resources.wood} wood)`);
     else setActionHint('Workbench: fully used!');
     return;
   }
 
-  if (!gameState.built.workbench && isInSafeZone(px, pz) && gameState.resources.wood >= 5) { setActionHint('[SPACE] Build Workbench (5 wood)'); return; }
+  if (!gameState.built.workbench && isInSafeZone(px, pz) && gameState.resources.wood >= 5) { setActionHint(`[${action}] Build Workbench (5 wood)`); return; }
 
   for (const m of mines) {
     if (!m.alive) continue;
-    if (dist2D(px, pz, m.x, m.z) < 3) { setActionHint(gameState.hasPickaxe ? '[SPACE] Mine ore' : '⛏️ Need Pickaxe — craft at Workbench first'); return; }
+    if (dist2D(px, pz, m.x, m.z) < 3) { setActionHint(gameState.hasPickaxe ? `[${action}] Mine ore` : '⛏️ Need Pickaxe — craft at Workbench first'); return; }
   }
   for (const t of trees) {
     if (!t.alive) continue;
-    if (dist2D(px, pz, t.x, t.z) < 3) { setActionHint('[SPACE] Chop tree'); return; }
+    if (dist2D(px, pz, t.x, t.z) < 3) { setActionHint(`[${action}] Chop tree`); return; }
   }
   setActionHint('');
 }
@@ -175,23 +210,33 @@ export function updateContextHints(): void {
 let introShown = true;
 
 export function initInput(onFirstKey: () => void): void {
-  window.addEventListener('keydown', e => {
-    keys[e.key] = true;
-    if (e.key === ' ') { e.preventDefault(); handleAction(); }
-    if ((e.key === 'v' || e.key === 'V') && gameState.inCar) {
-      gameState.driverView = !gameState.driverView;
-      setActionHint(gameState.driverView ? '🚗 Driver view — press V to switch back' : '🚗 Third-person view — press V for driver view');
-    }
-    if (e.key === 'Escape') hideMessage();
-  });
-  window.addEventListener('keyup', e => { keys[e.key] = false; });
-
-  window.addEventListener('keydown', () => {
+  let started = false;
+  const startGameFromInput = (): void => {
+    if (started) return;
+    started = true;
     if (introShown) { introShown = false; hideMessage(); }
     initAudio();
     startDeerYells();
     onFirstKey();
-  }, { once: true });
+  };
+
+  window.addEventListener('keydown', e => {
+    keys[e.key] = true;
+    startGameFromInput();
+    if (e.key === ' ') { e.preventDefault(); handleAction(); }
+    if (e.key === 'v' || e.key === 'V') toggleCarCameraView();
+    if (e.key === 'Escape') hideMessage();
+  });
+  window.addEventListener('keyup', e => { keys[e.key] = false; });
+
+  initTouchControls({
+    onStart: startGameFromInput,
+    onAction: handleAction,
+    onToggleCamera: toggleCarCameraView,
+    onOfferShown: () => {
+      setActionHint('Touch device detected: enable touch controls to use the on-screen trackpad.');
+    },
+  });
 }
 
 export { introShown };

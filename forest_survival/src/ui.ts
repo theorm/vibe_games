@@ -2,6 +2,10 @@
 import { gameState, trees, mines, aliens, zombies } from './state.js';
 import { FOREST_R, SAFE_R } from './constants.js';
 
+function actionControlName(): string {
+  return gameState.inputProfile === 'touch' ? 'ACTION' : 'SPACE';
+}
+
 export function setActionHint(txt: string): void {
   document.getElementById('action-hint')!.textContent = txt;
 }
@@ -94,8 +98,15 @@ export function updateCarHint(playerPos: any, carPos: any): void {
   const nearCar = Math.sqrt(
     (playerPos.x - carPos.x) ** 2 + (playerPos.z - carPos.z) ** 2
   ) < 3;
-  if (!gameState.inCar && nearCar) { ch.style.display = 'block'; ch.textContent = '[SPACE] Get in car 🚗'; }
-  else if (gameState.inCar)        { ch.style.display = 'block'; ch.textContent = '[SPACE] Exit car  |  ↑↓ Drive  ←→ Steer'; }
+  if (!gameState.inCar && nearCar) {
+    ch.style.display = 'block';
+    ch.textContent = `[${actionControlName()}] Get in car 🚗`;
+  } else if (gameState.inCar) {
+    ch.style.display = 'block';
+    ch.textContent = gameState.inputProfile === 'touch'
+      ? '[ACTION] Exit car  |  Trackpad Drive + Steer'
+      : '[SPACE] Exit car  |  ↑↓ Drive  ←→ Steer';
+  }
   else                             { ch.style.display = 'none'; }
 }
 

@@ -36,7 +36,8 @@ gameState.onDeath = (by: string) => { triggerDeath(by); };
 showMessage(
   `🌲 <strong>FOREST SURVIVAL</strong> 🌲<br><br>
   <em>A vicious deer stalks the woods...<br>also aliens, and zombies from the lab.</em><br><br>
-  <b>← → Turn &nbsp;&nbsp; ↑ ↓ Move &nbsp;&nbsp; SPACE Action</b><br><br>
+  <b>← → Turn &nbsp;&nbsp; ↑ ↓ Move &nbsp;&nbsp; SPACE Action</b><br>
+  <b>Phone/Tablet: enable touch controls for trackpad + ACTION/CAM</b><br><br>
   Chop trees → build workbench → craft pickaxe<br>→ mine ore → forge sword → kill deer<br><br>
   🚗 Red car parked in the safe zone for emergencies<br>
   🧟 Zombies invade from the lab at dawn<br>
