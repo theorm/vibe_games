@@ -193,3 +193,11 @@ Bundle cache-busting on build:
 - `build.mjs` now generates a random token after each successful build and rewrites `index.html` script URL to `dist/bundle.js?v=<random>`
 - Cache-bust query replacement supports both plain `dist/bundle.js` and previously versioned URLs
 - This ensures browsers fetch the latest bundle after rebuilds instead of serving stale cached JS
+
+# v.19
+
+Rocket site collision + rocket visual realism pass:
+
+- Replaced the old single-radius rocket-site collision with footprint-aware boundaries (pad rectangle, gantry tower, service arms, fuel tanks, rocket core, and booster colliders) for more accurate launch-site edge detection.
+- Added procedural high-visibility rocket hull textures (paint panels, seams, stage bands, decals, and micro-variation) so the rocket no longer renders as a flat dark/black surface.
+- Upgraded rocket/launch-site materials from basic Lambert shading to tuned PBR materials with normal/roughness detail and metal maps for improved readability and realism under the day/night lighting model.

@@ -33,7 +33,7 @@
 	shadowCam.top = 80;
 	shadowCam.bottom = -80;
 	scene.add(sun);
-	const moonLight = new THREE.DirectionalLight(3359846, .3);
+	const moonLight = new THREE.DirectionalLight(3359846, .8);
 	moonLight.position.set(-30, 40, -20);
 	scene.add(moonLight);
 	const skyFill = new THREE.HemisphereLight(14544639, 2764607, .35);
@@ -73,6 +73,11 @@
 			z: -80
 		},
 		castleRadius: 12,
+		rocketPos: {
+			x: 0,
+			z: 80
+		},
+		rocketRadius: 8,
 		workbenchPos: null,
 		onWin: null,
 		onDeath: null
@@ -93,6 +98,26 @@
 		const dx = ax - bx, dz = az - bz;
 		return Math.sqrt(dx * dx + dz * dz);
 	}
+	function intersectsRect2D(x, z, r, cx, cz, halfW, halfD) {
+		return Math.abs(x - cx) < halfW + r && Math.abs(z - cz) < halfD + r;
+	}
+	function intersectsCircle2D(x, z, r, cx, cz, cr) {
+		return dist2D(x, z, cx, cz) < r + cr;
+	}
+	function collidesWithRocketSite(x, z, r) {
+		const rx = gameState.rocketPos.x;
+		const rz = gameState.rocketPos.z;
+		if (intersectsRect2D(x, z, r, rx, rz, 8.1, 8.1)) return true;
+		if (intersectsRect2D(x, z, r, rx - 5, rz - 5, 1.8, 1.8)) return true;
+		if (intersectsRect2D(x, z, r, rx - 2, rz - 5, 2.9, .6)) return true;
+		if (intersectsRect2D(x, z, r, rx + 6, rz - 4, 2.2, 1.6)) return true;
+		if (intersectsRect2D(x, z, r, rx + 6, rz, 2.2, 1.6)) return true;
+		if (intersectsRect2D(x, z, r, rx + 6, rz + 4, 2.2, 1.6)) return true;
+		if (intersectsCircle2D(x, z, r, rx, rz, 2.9)) return true;
+		if (intersectsCircle2D(x, z, r, rx + 2.4, rz, .95)) return true;
+		if (intersectsCircle2D(x, z, r, rx - 2.4, rz, .95)) return true;
+		return false;
+	}
 	function isInSafeZone(x, z) {
 		return dist2D(x, z, 0, 0) < 8;
 	}
@@ -102,12 +127,13 @@
 	function cellKey(x, z) {
 		return `${Math.round(x)},${Math.round(z)}`;
 	}
-	/** Checks for collisions with any static object (trees, mines, workbench). */
+	/** Checks for collisions with any static object (trees, mines, workbench, castle, rocket site). */
 	function checkWorldCollision(x, z, r) {
 		for (const t of trees) if (t.alive && dist2D(x, z, t.x, t.z) < r + .6) return true;
 		for (const m of mines) if (m.alive && dist2D(x, z, m.x, m.z) < r + .9) return true;
 		if (gameState.workbenchPos && dist2D(x, z, gameState.workbenchPos.x, gameState.workbenchPos.z) < r + .9) return true;
 		if (dist2D(x, z, gameState.castlePos.x, gameState.castlePos.z) < r + gameState.castleRadius) return true;
+		if (collidesWithRocketSite(x, z, r)) return true;
 		return false;
 	}
 	function deerCanEnter(x, z) {
@@ -172,6 +198,292 @@
 			hp: 3,
 			alive: true
 		});
+	}
+	function tuneSiteTexture(tex, repeatX, repeatY, isColor) {
+		tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+		tex.repeat.set(repeatX, repeatY);
+		tex.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
+		if (isColor) tex.encoding = THREE.sRGBEncoding;
+	}
+	function loadSiteTexture(loader, path, repeatX, repeatY, isColor) {
+		const tex = loader.load(path, void 0, void 0, () => {
+			console.warn(`[rocket-site] Failed to load texture: ${path}`);
+		});
+		tuneSiteTexture(tex, repeatX, repeatY, isColor);
+		return tex;
+	}
+	function makeRocketHullTexture() {
+		const width = 1024;
+		const height = 2048;
+		const canvas = document.createElement("canvas");
+		canvas.width = width;
+		canvas.height = height;
+		const ctx = canvas.getContext("2d");
+		const baseGrad = ctx.createLinearGradient(0, 0, width, 0);
+		baseGrad.addColorStop(0, "#e9edf3");
+		baseGrad.addColorStop(.5, "#ffffff");
+		baseGrad.addColorStop(1, "#dfe5ec");
+		ctx.fillStyle = baseGrad;
+		ctx.fillRect(0, 0, width, height);
+		ctx.strokeStyle = "rgba(56,67,82,0.28)";
+		ctx.lineWidth = 6;
+		for (let y = 150; y < height; y += 180) {
+			ctx.beginPath();
+			ctx.moveTo(0, y);
+			ctx.lineTo(width, y);
+			ctx.stroke();
+		}
+		ctx.strokeStyle = "rgba(70,84,100,0.2)";
+		ctx.lineWidth = 4;
+		for (let x = 128; x < width; x += 128) {
+			ctx.beginPath();
+			ctx.moveTo(x, 0);
+			ctx.lineTo(x, height);
+			ctx.stroke();
+		}
+		for (const band of [
+			{
+				y: 420,
+				h: 84
+			},
+			{
+				y: 1110,
+				h: 68
+			},
+			{
+				y: 1600,
+				h: 60
+			}
+		]) {
+			ctx.fillStyle = "#171f2b";
+			ctx.fillRect(0, band.y, width, band.h);
+			ctx.fillStyle = "#be3036";
+			ctx.fillRect(0, band.y + band.h - 16, width, 16);
+		}
+		ctx.fillStyle = "#2a3850";
+		ctx.font = "700 110px Arial";
+		ctx.textAlign = "center";
+		ctx.fillText("FSA", width * .5, 300);
+		for (let i = 0; i < 3e3; i++) {
+			const x = Math.random() * width;
+			const y = Math.random() * height;
+			const c = 232 + Math.floor(Math.random() * 20);
+			ctx.fillStyle = `rgba(${c},${c},${c + 2},0.16)`;
+			ctx.fillRect(x, y, 2, 2);
+		}
+		const tex = new THREE.CanvasTexture(canvas);
+		tuneSiteTexture(tex, 1, 1, true);
+		return tex;
+	}
+	function makeRocketPanelNormalTexture() {
+		const width = 512;
+		const height = 1024;
+		const canvas = document.createElement("canvas");
+		canvas.width = width;
+		canvas.height = height;
+		const ctx = canvas.getContext("2d");
+		ctx.fillStyle = "#8080ff";
+		ctx.fillRect(0, 0, width, height);
+		ctx.strokeStyle = "#7676ff";
+		ctx.lineWidth = 2;
+		for (let y = 64; y < height; y += 90) {
+			ctx.beginPath();
+			ctx.moveTo(0, y);
+			ctx.lineTo(width, y);
+			ctx.stroke();
+		}
+		for (let i = 0; i < 2200; i++) {
+			const x = Math.random() * width;
+			const y = Math.random() * height;
+			ctx.fillStyle = i % 2 === 0 ? "#7b7bff" : "#8686ff";
+			ctx.fillRect(x, y, 2, 2);
+		}
+		const tex = new THREE.CanvasTexture(canvas);
+		tuneSiteTexture(tex, 1, 1, false);
+		return tex;
+	}
+	function makeRocketRoughnessTexture() {
+		const width = 512;
+		const height = 1024;
+		const canvas = document.createElement("canvas");
+		canvas.width = width;
+		canvas.height = height;
+		const ctx = canvas.getContext("2d");
+		ctx.fillStyle = "#8d8d8d";
+		ctx.fillRect(0, 0, width, height);
+		ctx.fillStyle = "#757575";
+		for (let y = 95; y < height; y += 180) ctx.fillRect(0, y, width, 14);
+		for (let i = 0; i < 4200; i++) {
+			const x = Math.random() * width;
+			const y = Math.random() * height;
+			const v = 112 + Math.random() * 60 | 0;
+			ctx.fillStyle = `rgba(${v},${v},${v},0.18)`;
+			ctx.fillRect(x, y, 2, 2);
+		}
+		const tex = new THREE.CanvasTexture(canvas);
+		tuneSiteTexture(tex, 1, 1, false);
+		return tex;
+	}
+	function makeRocketSite() {
+		const rx = gameState.rocketPos.x, rz = gameState.rocketPos.z;
+		const g = new THREE.Group();
+		g.position.set(rx, 0, rz);
+		const loader = new THREE.TextureLoader();
+		const metalDiff = loadSiteTexture(loader, "assets/textures/car/metal_plate_02_diff_1k.jpg", 1.6, 3, true);
+		const metalArm = loadSiteTexture(loader, "assets/textures/car/metal_plate_02_arm_1k.png", 1.6, 3, false);
+		const metalNor = loadSiteTexture(loader, "assets/textures/car/metal_plate_02_nor_gl_1k.png", 1.6, 3, false);
+		const rocketHullMap = makeRocketHullTexture();
+		const rocketHullNormal = makeRocketPanelNormalTexture();
+		const rocketHullRoughness = makeRocketRoughnessTexture();
+		const structuralSteel = new THREE.MeshStandardMaterial({
+			color: 12568526,
+			map: metalDiff,
+			normalMap: metalNor,
+			roughnessMap: metalArm,
+			metalnessMap: metalArm,
+			metalness: .78,
+			roughness: .42
+		});
+		const concrete = new THREE.MeshStandardMaterial({
+			color: 9211280,
+			roughness: .95,
+			metalness: .03
+		});
+		const hazard = new THREE.MeshStandardMaterial({
+			color: 16173591,
+			roughness: .62,
+			metalness: .08
+		});
+		const rocketHull = new THREE.MeshStandardMaterial({
+			color: 16777215,
+			map: rocketHullMap,
+			normalMap: rocketHullNormal,
+			roughnessMap: rocketHullRoughness,
+			metalness: .24,
+			roughness: .52
+		});
+		const rocketTrim = new THREE.MeshStandardMaterial({
+			color: 1712689,
+			map: metalDiff,
+			normalMap: metalNor,
+			roughnessMap: metalArm,
+			metalnessMap: metalArm,
+			metalness: .72,
+			roughness: .35
+		});
+		const engine = new THREE.MeshStandardMaterial({
+			color: 5266022,
+			map: metalDiff,
+			normalMap: metalNor,
+			roughnessMap: metalArm,
+			metalnessMap: metalArm,
+			metalness: .9,
+			roughness: .26,
+			emissive: 2363648,
+			emissiveIntensity: .15
+		});
+		const pad = new THREE.Mesh(new THREE.BoxGeometry(16, .5, 16), concrete);
+		pad.position.y = .25;
+		pad.receiveShadow = true;
+		g.add(pad);
+		for (let i = 0; i < 4; i++) {
+			const m = new THREE.Mesh(new THREE.PlaneGeometry(16, .5), hazard);
+			m.rotation.x = -Math.PI / 2;
+			m.position.y = .51;
+			if (i === 0) m.position.z = 7.75;
+			if (i === 1) m.position.z = -7.75;
+			if (i === 2) {
+				m.position.x = 7.75;
+				m.rotation.z = Math.PI / 2;
+			}
+			if (i === 3) {
+				m.position.x = -7.75;
+				m.rotation.z = Math.PI / 2;
+			}
+			g.add(m);
+		}
+		const towerHeight = 25;
+		const tower = new THREE.Mesh(new THREE.BoxGeometry(3, towerHeight, 3), structuralSteel);
+		tower.position.set(-5, towerHeight / 2 + .5, -5);
+		tower.castShadow = true;
+		g.add(tower);
+		for (let i = 0; i < 6; i++) {
+			const arm = new THREE.Mesh(new THREE.BoxGeometry(5, .4, .4), structuralSteel);
+			arm.position.set(-2, 4 + i * 4, -5);
+			arm.castShadow = true;
+			g.add(arm);
+		}
+		const rocket = new THREE.Group();
+		rocket.position.y = .5;
+		const stage1 = new THREE.Mesh(new THREE.CylinderGeometry(1.8, 1.8, 12, 20), rocketHull);
+		stage1.position.y = 6;
+		stage1.castShadow = true;
+		rocket.add(stage1);
+		const stage2 = new THREE.Mesh(new THREE.CylinderGeometry(1.4, 1.8, 8, 20), rocketHull);
+		stage2.position.y = 16;
+		stage2.castShadow = true;
+		rocket.add(stage2);
+		const stage3 = new THREE.Mesh(new THREE.CylinderGeometry(1, 1.4, 4, 20), rocketHull);
+		stage3.position.y = 22;
+		stage3.castShadow = true;
+		rocket.add(stage3);
+		const nose = new THREE.Mesh(new THREE.ConeGeometry(1, 3, 20), rocketHull);
+		nose.position.y = 25.5;
+		nose.castShadow = true;
+		rocket.add(nose);
+		const ring1 = new THREE.Mesh(new THREE.TorusGeometry(1.82, .08, 10, 36), rocketTrim);
+		ring1.rotation.x = Math.PI / 2;
+		ring1.position.y = 11.95;
+		rocket.add(ring1);
+		const ring2 = new THREE.Mesh(new THREE.TorusGeometry(1.42, .08, 10, 32), rocketTrim);
+		ring2.rotation.x = Math.PI / 2;
+		ring2.position.y = 19.95;
+		rocket.add(ring2);
+		for (let i = 0; i < 4; i++) {
+			const fin = new THREE.Mesh(new THREE.BoxGeometry(.1, 3, 2), rocketTrim);
+			const a = i / 4 * Math.PI * 2;
+			fin.position.set(Math.cos(a) * 2.2, 1.5, Math.sin(a) * 2.2);
+			fin.rotation.y = -a;
+			fin.castShadow = true;
+			rocket.add(fin);
+		}
+		for (let i = 0; i < 5; i++) {
+			const nozzle = new THREE.Mesh(new THREE.CylinderGeometry(.3, .5, .8, 12), engine);
+			const a = i / 4 * Math.PI * 2;
+			const r = i === 4 ? 0 : .8;
+			nozzle.position.set(Math.cos(a) * r, -.4, Math.sin(a) * r);
+			rocket.add(nozzle);
+		}
+		for (let i = 0; i < 2; i++) {
+			const booster = new THREE.Mesh(new THREE.CylinderGeometry(.8, .8, 8, 16), rocketHull);
+			const side = i === 0 ? 1 : -1;
+			booster.position.set(side * 2.4, 4, 0);
+			booster.castShadow = true;
+			rocket.add(booster);
+			const bNose = new THREE.Mesh(new THREE.ConeGeometry(.8, 1.5, 16), rocketHull);
+			bNose.position.set(side * 2.4, 8.75, 0);
+			bNose.castShadow = true;
+			rocket.add(bNose);
+		}
+		g.add(rocket);
+		for (let i = 0; i < 3; i++) {
+			const tank = new THREE.Mesh(new THREE.CylinderGeometry(1.5, 1.5, 4, 14), structuralSteel);
+			tank.position.set(6, 2, -4 + i * 4);
+			tank.rotation.z = Math.PI / 2;
+			tank.castShadow = true;
+			g.add(tank);
+		}
+		scene.add(g);
+		const path1 = new THREE.Mesh(new THREE.PlaneGeometry(8, 40), concrete);
+		path1.rotation.x = -Math.PI / 2;
+		path1.receiveShadow = true;
+		path1.position.set(rx, .03, rz - 20);
+		scene.add(path1);
+		const path2 = new THREE.Mesh(new THREE.PlaneGeometry(6, 50), concrete);
+		path2.rotation.x = -Math.PI / 2;
+		path2.receiveShadow = true;
+		path2.position.set(0, .02, 35);
+		scene.add(path2);
 	}
 	function makeCastle() {
 		const cx = gameState.castlePos.x, cz = gameState.castlePos.z;
@@ -275,6 +587,7 @@
 		sign.position.set(144.5, 2.5, 0);
 		scene.add(sign);
 		makeCastle();
+		makeRocketSite();
 	}
 	function generateWorld() {
 		let p = 0;
@@ -284,6 +597,7 @@
 			const x = Math.cos(a) * r, z = Math.sin(a) * r;
 			if (Math.sqrt(x * x + z * z) > 48) continue;
 			if (Math.abs(x - 52) < 3) continue;
+			if (Math.abs(x) < 5 && z > 0) continue;
 			makeTree(x, z);
 			p++;
 		}

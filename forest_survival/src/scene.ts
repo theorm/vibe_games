@@ -36,7 +36,7 @@ shadowCam.left   = -80; shadowCam.right  = 80;
 shadowCam.top    = 80;  shadowCam.bottom = -80;
 scene.add(sun);
 
-export const moonLight = new THREE.DirectionalLight(0x334466, 0.3);
+export const moonLight = new THREE.DirectionalLight(0x334466, 0.8);
 moonLight.position.set(-30, 40, -20);
 scene.add(moonLight);
 
