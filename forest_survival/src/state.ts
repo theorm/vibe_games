@@ -52,6 +52,12 @@ export const gameState = {
   deerState: 'wander' as string,
   deerAlive: true,
   deerPos: { x: 0, z: 0 },
+  // Castle position for collision
+  castlePos: { x: -80, z: -80 },
+  castleRadius: 12,
+  // Rocket position for collision
+  rocketPos: { x: 0, z: 80 },
+  rocketRadius: 8,
   // Workbench position (set by workbench.ts, read by player.ts for collision)
   workbenchPos: null as any,
   // Win/death callbacks — set by main.ts to avoid circular imports

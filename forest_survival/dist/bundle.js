@@ -68,6 +68,11 @@
 			x: 0,
 			z: 0
 		},
+		castlePos: {
+			x: -80,
+			z: -80
+		},
+		castleRadius: 12,
 		workbenchPos: null,
 		onWin: null,
 		onDeath: null
@@ -102,6 +107,7 @@
 		for (const t of trees) if (t.alive && dist2D(x, z, t.x, t.z) < r + .6) return true;
 		for (const m of mines) if (m.alive && dist2D(x, z, m.x, m.z) < r + .9) return true;
 		if (gameState.workbenchPos && dist2D(x, z, gameState.workbenchPos.x, gameState.workbenchPos.z) < r + .9) return true;
+		if (dist2D(x, z, gameState.castlePos.x, gameState.castlePos.z) < r + gameState.castleRadius) return true;
 		return false;
 	}
 	function deerCanEnter(x, z) {
@@ -167,6 +173,65 @@
 			alive: true
 		});
 	}
+	function makeCastle() {
+		const cx = gameState.castlePos.x, cz = gameState.castlePos.z;
+		const g = new THREE.Group();
+		g.position.set(cx, 0, cz);
+		const stone = new THREE.MeshLambertMaterial({ color: 8947865 });
+		const roof = new THREE.MeshLambertMaterial({ color: 11158596 });
+		const gold = new THREE.MeshLambertMaterial({ color: 16766720 });
+		const skin = new THREE.MeshLambertMaterial({ color: 16109737 });
+		const dress = new THREE.MeshLambertMaterial({ color: 16738740 });
+		const keep = new THREE.Mesh(new THREE.BoxGeometry(12, 8, 12), stone);
+		keep.position.y = 4;
+		keep.castShadow = true;
+		keep.receiveShadow = true;
+		g.add(keep);
+		for (let x of [-6, 6]) for (let z of [-6, 6]) {
+			const t = new THREE.Mesh(new THREE.CylinderGeometry(2, 2.2, 12, 8), stone);
+			t.position.set(x, 6, z);
+			t.castShadow = true;
+			g.add(t);
+			const r = new THREE.Mesh(new THREE.ConeGeometry(2.5, 4, 8), roof);
+			r.position.set(x, 14, z);
+			g.add(r);
+		}
+		const tallT = new THREE.Mesh(new THREE.CylinderGeometry(2.5, 2.5, 18, 12), stone);
+		tallT.position.set(-4, 9, -4);
+		tallT.castShadow = true;
+		g.add(tallT);
+		const balcony = new THREE.Mesh(new THREE.CylinderGeometry(3.2, 3.2, .4, 12), stone);
+		balcony.position.set(-4, 15.5, -4);
+		g.add(balcony);
+		const rail = new THREE.Mesh(new THREE.TorusGeometry(3.1, .1, 8, 24), stone);
+		rail.position.set(-4, 16.2, -4);
+		rail.rotation.x = Math.PI / 2;
+		g.add(rail);
+		const pG = new THREE.Group();
+		pG.position.set(-4, 15.7, -1.5);
+		const pBody = new THREE.Mesh(new THREE.ConeGeometry(.4, .8, 8), dress);
+		pBody.position.y = .4;
+		pG.add(pBody);
+		const pHead = new THREE.Mesh(new THREE.SphereGeometry(.25, 8, 8), skin);
+		pHead.position.y = 1;
+		pG.add(pHead);
+		const pHair = new THREE.Mesh(new THREE.SphereGeometry(.28, 8, 8, 0, Math.PI * 2, 0, Math.PI / 2), gold);
+		pHair.position.y = 1.05;
+		pG.add(pHair);
+		const pCrown = new THREE.Mesh(new THREE.CylinderGeometry(.15, .1, .15, 6), gold);
+		pCrown.position.y = 1.35;
+		pG.add(pCrown);
+		g.add(pG);
+		const gate = new THREE.Mesh(new THREE.BoxGeometry(4, 5, .5), new THREE.MeshLambertMaterial({ color: 5913114 }));
+		gate.position.set(0, 2.5, 6);
+		g.add(gate);
+		scene.add(g);
+		const path = new THREE.Mesh(new THREE.PlaneGeometry(30, 6), new THREE.MeshLambertMaterial({ color: 7829367 }));
+		path.rotation.x = -Math.PI / 2;
+		path.position.set(-65, .03, -65);
+		path.rotation.z = Math.PI / 4;
+		scene.add(path);
+	}
 	function makeGround() {
 		const m = new THREE.Mesh(new THREE.PlaneGeometry(300, 300), new THREE.MeshLambertMaterial({ color: 4880954 }));
 		m.rotation.x = -Math.PI / 2;
@@ -209,6 +274,7 @@
 		const sign = new THREE.Mesh(new THREE.BoxGeometry(.1, 2, 4), new THREE.MeshBasicMaterial({ color: 60928 }));
 		sign.position.set(144.5, 2.5, 0);
 		scene.add(sign);
+		makeCastle();
 	}
 	function generateWorld() {
 		let p = 0;

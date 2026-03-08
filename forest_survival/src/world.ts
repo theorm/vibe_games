@@ -38,6 +38,10 @@ export function checkWorldCollision(x: number, z: number, r: number): boolean {
   if (gameState.workbenchPos && dist2D(x, z, gameState.workbenchPos.x, gameState.workbenchPos.z) < r + 0.9) {
     return true;
   }
+  // 4. Castle
+  if (dist2D(x, z, gameState.castlePos.x, gameState.castlePos.z) < r + gameState.castleRadius) {
+    return true;
+  }
   return false;
 }
 
@@ -117,6 +121,75 @@ export function makeMine(x: number, z: number): void {
   mines.push({ mesh: g, x, z, hp: 3, alive: true });
 }
 
+// ── Castle factory ────────────────────────────────────────
+
+export function makeCastle(): void {
+  const cx = gameState.castlePos.x, cz = gameState.castlePos.z;
+  const g = new THREE.Group();
+  g.position.set(cx, 0, cz);
+
+  const stone = new THREE.MeshLambertMaterial({ color: 0x888899 });
+  const roof  = new THREE.MeshLambertMaterial({ color: 0xaa4444 });
+  const gold  = new THREE.MeshLambertMaterial({ color: 0xffd700 });
+  const skin  = new THREE.MeshLambertMaterial({ color: 0xf5d0a9 });
+  const dress = new THREE.MeshLambertMaterial({ color: 0xff69b4 });
+
+  // Main keep
+  const keep = new THREE.Mesh(new THREE.BoxGeometry(12, 8, 12), stone);
+  keep.position.y = 4; keep.castShadow = true; keep.receiveShadow = true; g.add(keep);
+
+  // Four corner towers
+  for (let x of [-6, 6]) {
+    for (let z of [-6, 6]) {
+      const t = new THREE.Mesh(new THREE.CylinderGeometry(2, 2.2, 12, 8), stone);
+      t.position.set(x, 6, z); t.castShadow = true; g.add(t);
+      const r = new THREE.Mesh(new THREE.ConeGeometry(2.5, 4, 8), roof);
+      r.position.set(x, 14, z); g.add(r);
+    }
+  }
+
+  // Tallest tower (North-West)
+  const tallT = new THREE.Mesh(new THREE.CylinderGeometry(2.5, 2.5, 18, 12), stone);
+  tallT.position.set(-4, 9, -4); tallT.castShadow = true; g.add(tallT);
+
+  // Balcony on the tallest tower
+  const balcony = new THREE.Mesh(new THREE.CylinderGeometry(3.2, 3.2, 0.4, 12), stone);
+  balcony.position.set(-4, 15.5, -4); g.add(balcony);
+  const rail = new THREE.Mesh(new THREE.TorusGeometry(3.1, 0.1, 8, 24), stone);
+  rail.position.set(-4, 16.2, -4); rail.rotation.x = Math.PI / 2; g.add(rail);
+
+  // Princess on the balcony
+  const pG = new THREE.Group();
+  pG.position.set(-4, 15.7, -4 + 2.5); // Sitting on the south edge of the balcony
+  
+  const pBody = new THREE.Mesh(new THREE.ConeGeometry(0.4, 0.8, 8), dress);
+  pBody.position.y = 0.4; pG.add(pBody);
+  const pHead = new THREE.Mesh(new THREE.SphereGeometry(0.25, 8, 8), skin);
+  pHead.position.y = 1.0; pG.add(pHead);
+  const pHair = new THREE.Mesh(new THREE.SphereGeometry(0.28, 8, 8, 0, Math.PI * 2, 0, Math.PI / 2), gold);
+  pHair.position.y = 1.05; pG.add(pHair);
+  const pCrown = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.1, 0.15, 6), gold);
+  pCrown.position.y = 1.35; pG.add(pCrown);
+  
+  g.add(pG);
+
+  // Castle gate (North side)
+  const gate = new THREE.Mesh(new THREE.BoxGeometry(4, 5, 0.5), new THREE.MeshLambertMaterial({ color: 0x5a3a1a }));
+  gate.position.set(0, 2.5, 6); g.add(gate);
+
+  scene.add(g);
+
+  // Path from forest edge to castle
+  const path = new THREE.Mesh(
+    new THREE.PlaneGeometry(30, 6),
+    new THREE.MeshLambertMaterial({ color: 0x777777 })
+  );
+  path.rotation.x = -Math.PI / 2;
+  path.position.set(-65, 0.03, -65);
+  path.rotation.z = Math.PI / 4;
+  scene.add(path);
+}
+
 // ── Ground & world dressing ───────────────────────────────
 
 export function makeGround(): void {
@@ -173,6 +246,8 @@ export function makeGround(): void {
     new THREE.MeshBasicMaterial({ color: 0x00ee00 })
   );
   sign.position.set(144.5, 2.5, 0); scene.add(sign);
+
+  makeCastle();
 }
 
 // ── World generation ──────────────────────────────────────
