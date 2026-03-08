@@ -185,3 +185,11 @@ Touch fallback + mobile zoom prevention:
 - Touch taps anywhere now also attempt to force-enable touch controls before starting the game
 - Added mobile viewport config (`user-scalable=no`, `maximum-scale=1`) and CSS touch/overscroll guards to reduce accidental page zooming during gameplay
 - Added iOS gesture guards (`gesturestart`/`gesturechange`) to further prevent pinch/double-tap zoom behavior
+
+# v.18
+
+Bundle cache-busting on build:
+
+- `build.mjs` now generates a random token after each successful build and rewrites `index.html` script URL to `dist/bundle.js?v=<random>`
+- Cache-bust query replacement supports both plain `dist/bundle.js` and previously versioned URLs
+- This ensures browsers fetch the latest bundle after rebuilds instead of serving stale cached JS
