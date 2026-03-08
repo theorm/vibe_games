@@ -3,7 +3,7 @@ declare const THREE: typeof import('three');
 
 import { scene } from './scene.js';
 import { FOREST_R, SAFE_R, TREE_COUNT, MINE_COUNT } from './constants.js';
-import { trees, mines, deforestedCells } from './state.js';
+import { gameState, trees, mines, deforestedCells } from './state.js';
 
 // ── Spatial helpers ────────────────────────────────────────
 
@@ -24,10 +24,19 @@ export function cellKey(x: number, z: number): string {
   return `${Math.round(x)},${Math.round(z)}`;
 }
 
-export function checkTreeCollision(x: number, z: number, r: number): boolean {
+/** Checks for collisions with any static object (trees, mines, workbench). */
+export function checkWorldCollision(x: number, z: number, r: number): boolean {
+  // 1. Trees
   for (const t of trees) {
-    if (!t.alive) continue;
-    if (dist2D(x, z, t.x, t.z) < r + 0.5) return true;
+    if (t.alive && dist2D(x, z, t.x, t.z) < r + 0.6) return true;
+  }
+  // 2. Mines
+  for (const m of mines) {
+    if (m.alive && dist2D(x, z, m.x, m.z) < r + 0.9) return true;
+  }
+  // 3. Workbench
+  if (gameState.workbenchPos && dist2D(x, z, gameState.workbenchPos.x, gameState.workbenchPos.z) < r + 0.9) {
+    return true;
   }
   return false;
 }

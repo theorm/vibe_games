@@ -51,6 +51,7 @@ export const gameState = {
   // Deer state mirrored here so audio.ts can read it without importing deer.ts
   deerState: 'wander' as string,
   deerAlive: true,
+  deerPos: { x: 0, z: 0 },
   // Workbench position (set by workbench.ts, read by player.ts for collision)
   workbenchPos: null as any,
   // Win/death callbacks — set by main.ts to avoid circular imports

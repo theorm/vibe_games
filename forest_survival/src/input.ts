@@ -73,7 +73,7 @@ function handleAction(): void {
   // Attack deer
   if (gameState.hasSword && gameState.playerAttackTimer <= 0 && dist2D(px, pz, deer.pos.x, deer.pos.z) < PLAYER_ATK_R) {
     gameState.playerAttackTimer = 0.6;
-    sfxSwing();
+    sfxSwing(player.pos);
     gameState.deerHP = Math.max(0, gameState.deerHP - 25);
     setActionHint('⚔️ Hit! Deer HP: ' + Math.ceil(gameState.deerHP));
     if (gameState.deerHP <= 0) { gameState.onWin?.(); }
@@ -85,7 +85,7 @@ function handleAction(): void {
     if (!t.alive) continue;
     if (dist2D(px, pz, t.x, t.z) < CHOP_RANGE) {
       t.hp--;
-      sfxChop();
+      sfxChop({ x: t.x, y: 0, z: t.z });
       setActionHint(`🪓 Chopping... (${t.hp} hits left)`);
       if (t.hp <= 0) {
         t.alive = false; scene.remove(t.mesh);
@@ -103,7 +103,7 @@ function handleAction(): void {
       if (!m.alive) continue;
       if (dist2D(px, pz, m.x, m.z) < CHOP_RANGE) {
         m.hp--;
-        sfxChop();
+        sfxChop({ x: m.x, y: 0, z: m.z });
         setActionHint(`⛏️ Mining... (${m.hp} hits left)`);
         if (m.hp <= 0) {
           m.alive = false; scene.remove(m.mesh);
@@ -122,7 +122,7 @@ function handleAction(): void {
     if (!gameState.hasPickaxe) {
       if (gameState.resources.wood >= 3) {
         gameState.resources.wood -= 3; gameState.hasPickaxe = true; gameState.stage = Math.max(gameState.stage, 2);
-        sfxCraft();
+        sfxCraft(wb);
         setActionHint('⛏️ Pickaxe crafted!');
         showMessage(`⛏️ <strong>Pickaxe crafted!</strong><br>Find grey rock formations (mines) deep in the forest.<br>Walk up close and press ${actionControlName()} to mine ore!`, 5000);
         updateHUD(deer, player);
@@ -135,7 +135,7 @@ function handleAction(): void {
       if (gameState.resources.ore >= 3 && gameState.resources.wood >= 2) {
         gameState.resources.ore -= 3; gameState.resources.wood -= 2;
         gameState.hasSword = true; addSwordToPlayer(); gameState.stage = 4;
-        sfxCraft();
+        sfxCraft(wb);
         setActionHint('🗡️ Sword forged! Hunt the deer!');
         showMessage(`🗡️ <strong>SWORD FORGED!</strong><br>Hunt down the deer and press ${actionControlName()} when close to attack it!`, 5000);
         updateHUD(deer, player);
@@ -151,8 +151,10 @@ function handleAction(): void {
   if (!gameState.built.workbench && isInSafeZone(px, pz)) {
     if (gameState.resources.wood >= 5) {
       gameState.resources.wood -= 5;
-      placeWorkbench(px + fwdX * 1.5, pz + fwdZ * 1.5);
+      const wbX = px + fwdX * 1.5, wbZ = pz + fwdZ * 1.5;
+      placeWorkbench(wbX, wbZ);
       gameState.stage = Math.max(gameState.stage, 1);
+      sfxCraft({ x: wbX, y: 0, z: wbZ });
       setActionHint(`🔨 Workbench placed! Walk up and press ${actionControlName()}.`);
       showMessage(`🔨 <strong>Workbench built!</strong><br>Walk up to it and press ${actionControlName()}.<br>First craft: Pickaxe (3 wood) → mine ore → Sword (3 ore + 2 wood)`, 5500);
       updateHUD(deer, player);

@@ -7,7 +7,7 @@ import { gameState, deforestedCells } from './state.js';
 import { deerCanEnter, dist2D, cellKey } from './world.js';
 import { carPos } from './car.js';
 import { player } from './player.js';
-import { sfxDeerRoar } from './audio.js';
+import { sfxDeerRoar, sfxDeerStep } from './audio.js';
 import { flashColor } from './ui.js';
 
 export const deerGroup = new THREE.Group();
@@ -21,6 +21,7 @@ export const deer = {
   wanderTarget: new THREE.Vector3(),
   wanderTimer: 0,
   legPhase: 0,
+  lastStepPhase: 0,
   attackTimer: 0,
   alive: true,
 };
@@ -89,6 +90,8 @@ export function updateDeer(dt: number): void {
   // Mirror for audio module (avoids circular import)
   gameState.deerState = deer.state;
   gameState.deerAlive = deer.alive;
+  gameState.deerPos.x = deer.pos.x;
+  gameState.deerPos.z = deer.pos.z;
 
   let mx = 0, mz = 0;
   if (deer.state === 'chase') {
@@ -102,7 +105,7 @@ export function updateDeer(dt: number): void {
       if (player.invincTimer <= 0) {
         gameState.playerHP -= DEER_ATK_DMG;
         player.invincTimer = 0.5;
-        sfxDeerRoar();
+        sfxDeerRoar(deer.pos);
         flashColor('rgba(255,0,0,0.4)');
         if (gameState.playerHP <= 0) {
           gameState.playerHP = 0;
@@ -131,6 +134,16 @@ export function updateDeer(dt: number): void {
   }
 
   deer.legPhase += dt * 4;
+  
+  // Footstep triggers based on leg phase (four legs, so twice per cycle)
+  if (Math.abs(mx) > 0.01 || Math.abs(mz) > 0.01) {
+    const stepFreq = Math.PI;
+    if (Math.floor(deer.legPhase / stepFreq) !== Math.floor(deer.lastStepPhase / stepFreq)) {
+      sfxDeerStep(deer.pos);
+    }
+  }
+  deer.lastStepPhase = deer.legPhase;
+
   deerGroup.position.set(deer.pos.x, Math.abs(Math.sin(deer.legPhase * 0.5)) * 0.05, deer.pos.z);
   deerGroup.rotation.y = deer.facing;
   deerGroup.rotation.z = Math.sin(deer.legPhase) * 0.15;

@@ -8,6 +8,7 @@ import { carPos } from './car.js';
 import { player } from './player.js';
 import { dist2D } from './world.js';
 import { flashColor, setActionHint, showEventBanner } from './ui.js';
+import { sfxAlien, sfxZombie, sfxSquash } from './audio.js';
 
 export function spawnAliens(): void {
   showEventBanner('👽 ALIENS LANDING!', 5000, '#0f0');
@@ -108,6 +109,7 @@ export function updateEnemies(dt: number): void {
       e.attackTimer = 2.0;
       if (player.invincTimer <= 0) {
         const isAlien = aliens.includes(e);
+        if (isAlien) sfxAlien(e.pos); else sfxZombie(e.pos);
         const dmg = isAlien ? 15 : 10;
         gameState.playerHP -= dmg;
         player.invincTimer = 0.4;
@@ -122,6 +124,7 @@ export function updateEnemies(dt: number): void {
     // Car kills enemies on contact
     if (gameState.inCar && dist2D(e.pos.x, e.pos.z, carPos.x, carPos.z) < 2.5) {
       e.alive = false; scene.remove(e.mesh);
+      sfxSquash(e.pos);
       setActionHint('💥 Squashed!');
     }
 

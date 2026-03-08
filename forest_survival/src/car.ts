@@ -6,6 +6,7 @@ import { renderer, scene } from './scene.js';
 import { CAR_SPD, CAR_TURN } from './constants.js';
 import { gameState, keys } from './state.js';
 import { player } from './player.js';
+import { checkWorldCollision } from './world.js';
 
 export const carPos = new THREE.Vector3(0, 0, -5);
 export const carGroup = new THREE.Group();
@@ -819,8 +820,19 @@ export function updateCar(dt: number): void {
     if (keys['ArrowUp']) speed = CAR_SPD;
     if (keys['ArrowDown']) speed = -CAR_SPD * 0.5;
 
-    carPos.x -= Math.sin(gameState.carFacing) * speed * dt;
-    carPos.z -= Math.cos(gameState.carFacing) * speed * dt;
+    const nx = carPos.x - Math.sin(gameState.carFacing) * speed * dt;
+    const nz = carPos.z - Math.cos(gameState.carFacing) * speed * dt;
+
+    // Check collisions for front and rear of car (car is about 2m long in world units)
+    const fwdX = -Math.sin(gameState.carFacing);
+    const fwdZ = -Math.cos(gameState.carFacing);
+    const frontX = nx + fwdX * 1.2, frontZ = nz + fwdZ * 1.2;
+    const rearX  = nx - fwdX * 1.2, rearZ  = nz - fwdZ * 1.2;
+
+    if (!checkWorldCollision(frontX, frontZ, 0.7) && !checkWorldCollision(rearX, rearZ, 0.7)) {
+      carPos.x = nx;
+      carPos.z = nz;
+    }
 
     player.pos.copy(carPos);
     player.facing = gameState.carFacing;

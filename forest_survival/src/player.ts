@@ -4,7 +4,8 @@ declare const THREE: typeof import('three');
 import { scene } from './scene.js';
 import { FOREST_R, PLAYER_SPD } from './constants.js';
 import { gameState, keys } from './state.js';
-import { checkTreeCollision, dist2D } from './world.js';
+import { checkWorldCollision, dist2D } from './world.js';
+import { sfxStep } from './audio.js';
 
 export const playerGroup = new THREE.Group();
 scene.add(playerGroup);
@@ -13,6 +14,7 @@ export const player = {
   pos: new THREE.Vector3(FOREST_R + 2, 0, 0),
   facing: Math.PI,
   invincTimer: 0,
+  stepTimer: 0,
 };
 playerGroup.position.copy(player.pos);
 
@@ -94,10 +96,9 @@ export function updatePlayer(dt: number): void {
 
   const nx = player.pos.x + mx * dt, nz = player.pos.z + mz * dt;
   if (dist2D(nx, nz, 0, 0) < FOREST_R + 10) {
-    let blocked = checkTreeCollision(nx, nz, 0.4);
-    if (!blocked && gameState.workbenchPos && dist2D(nx, nz, gameState.workbenchPos.x, gameState.workbenchPos.z) < 0.9)
-      blocked = true;
-    if (!blocked) { player.pos.x = nx; player.pos.z = nz; }
+    if (!checkWorldCollision(nx, nz, 0.4)) {
+      player.pos.x = nx; player.pos.z = nz;
+    }
   }
 
   const moving = mx !== 0 || mz !== 0;
@@ -105,6 +106,16 @@ export function updatePlayer(dt: number): void {
   playerGroup.position.x = player.pos.x;
   playerGroup.position.z = player.pos.z;
   playerGroup.rotation.y = player.facing + Math.PI;
+
+  if (moving) {
+    player.stepTimer -= dt;
+    if (player.stepTimer <= 0) {
+      sfxStep(player.pos, 'grass');
+      player.stepTimer = 0.35;
+    }
+  } else {
+    player.stepTimer = 0;
+  }
 
   if (player.invincTimer > 0) {
     player.invincTimer -= dt;

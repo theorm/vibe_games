@@ -64,6 +64,10 @@
 		inputProfile: "keyboard",
 		deerState: "wander",
 		deerAlive: true,
+		deerPos: {
+			x: 0,
+			z: 0
+		},
 		workbenchPos: null,
 		onWin: null,
 		onDeath: null
@@ -93,11 +97,11 @@
 	function cellKey(x, z) {
 		return `${Math.round(x)},${Math.round(z)}`;
 	}
-	function checkTreeCollision(x, z, r) {
-		for (const t of trees) {
-			if (!t.alive) continue;
-			if (dist2D(x, z, t.x, t.z) < r + .5) return true;
-		}
+	/** Checks for collisions with any static object (trees, mines, workbench). */
+	function checkWorldCollision(x, z, r) {
+		for (const t of trees) if (t.alive && dist2D(x, z, t.x, t.z) < r + .6) return true;
+		for (const m of mines) if (m.alive && dist2D(x, z, m.x, m.z) < r + .9) return true;
+		if (gameState.workbenchPos && dist2D(x, z, gameState.workbenchPos.x, gameState.workbenchPos.z) < r + .9) return true;
 		return false;
 	}
 	function deerCanEnter(x, z) {
@@ -228,13 +232,946 @@
 		}
 	}
 	//#endregion
+	//#region src/ui.ts
+	function actionControlName$1() {
+		return gameState.inputProfile === "touch" ? "TAP" : "SPACE";
+	}
+	function setActionHint(txt) {
+		document.getElementById("action-hint").textContent = txt;
+	}
+	function showMessage(html, dur = 0) {
+		const el = document.getElementById("message");
+		el.innerHTML = html;
+		el.style.display = "block";
+		if (dur > 0) setTimeout(() => {
+			if (el.style.display !== "none") el.style.display = "none";
+		}, dur);
+	}
+	function hideMessage() {
+		document.getElementById("message").style.display = "none";
+	}
+	function flashColor(col) {
+		const f = document.getElementById("screen-flash");
+		f.style.background = col;
+		f.style.opacity = "1";
+		setTimeout(() => {
+			f.style.opacity = "0";
+		}, 140);
+	}
+	function showEventBanner(txt, dur, col = "#f00") {
+		const b = document.getElementById("event-banner");
+		b.textContent = txt;
+		b.style.borderColor = col;
+		b.style.display = "block";
+		if (dur > 0) setTimeout(() => {
+			b.style.display = "none";
+		}, dur);
+	}
+	function showFloatingText(txt) {
+		const el = document.createElement("div");
+		el.textContent = txt;
+		el.style.cssText = "position:fixed;left:50%;top:42%;transform:translateX(-50%);color:#fff;font-size:16px;font-family:Courier New,monospace;text-shadow:1px 1px 0 #000;pointer-events:none;z-index:50;transition:opacity 1s,top 1s;";
+		document.body.appendChild(el);
+		setTimeout(() => {
+			el.style.opacity = "0";
+			el.style.top = "36%";
+		}, 100);
+		setTimeout(() => el.remove(), 1200);
+	}
+	function updateHUD(deer, player) {
+		document.getElementById("health-fill").style.width = Math.max(0, gameState.playerHP) + "%";
+		document.getElementById("health-text").textContent = String(Math.ceil(Math.max(0, gameState.playerHP)));
+		document.getElementById("deer-fill").style.width = gameState.deerHP + "%";
+		document.getElementById("deer-text").textContent = String(Math.ceil(gameState.deerHP));
+		document.getElementById("resource-info").innerHTML = `\u{1FAB5} ${gameState.resources.wood} &nbsp; ⛰️ ${gameState.resources.ore}`;
+		const inv = document.getElementById("inventory");
+		inv.innerHTML = "";
+		[
+			{
+				icon: "🪓",
+				label: "Axe",
+				show: !gameState.hasSword
+			},
+			{
+				icon: "⛏️",
+				label: "Pickaxe",
+				show: gameState.hasPickaxe
+			},
+			{
+				icon: "🗡️",
+				label: "Sword",
+				show: gameState.hasSword
+			},
+			{
+				icon: "🪵",
+				label: `Wood×${gameState.resources.wood}`,
+				show: gameState.resources.wood > 0
+			},
+			{
+				icon: "⛰️",
+				label: `Ore×${gameState.resources.ore}`,
+				show: gameState.resources.ore > 0
+			},
+			{
+				icon: "🚗",
+				label: "Car",
+				show: true
+			}
+		].forEach((item) => {
+			if (!item.show) return;
+			const d = document.createElement("div");
+			d.className = "inv-slot";
+			d.innerHTML = `<div class="icon">${item.icon}</div><div>${item.label}</div>`;
+			inv.appendChild(d);
+		});
+		[
+			"obj0",
+			"obj1",
+			"obj2",
+			"obj3",
+			"obj4"
+		].forEach((id, i) => {
+			const el = document.getElementById(id);
+			if (i < gameState.stage) el.className = "done";
+			else if (i === gameState.stage) el.className = "active";
+			else el.className = "";
+		});
+	}
+	function updateClock(renderer, scene, sun, ambient, moonLight) {
+		const t = gameState.dayTime;
+		const names = [
+			"🌙 Night",
+			"🌅 Dawn",
+			"🌄 Morning",
+			"☀️ Noon",
+			"🌇 Dusk",
+			"🌆 Evening",
+			"🌙 Night"
+		];
+		const idx = Math.min(Math.floor((t + 1 / 14) % 1 * 7), 6);
+		document.getElementById("clock").textContent = names[idx];
+		let sr, sg, sb;
+		if (t < .25) {
+			const f = t / .25;
+			sr = Math.floor(10 + f * 120);
+			sg = Math.floor(10 + f * 100);
+			sb = Math.floor(30 + f * 140);
+		} else if (t < .5) {
+			const f = (t - .25) / .25;
+			sr = Math.floor(130 + f * 5);
+			sg = Math.floor(110 + f * 96);
+			sb = Math.floor(170 + f * 65);
+		} else if (t < .75) {
+			const f = (t - .5) / .25;
+			sr = Math.floor(135 - f * 50);
+			sg = Math.floor(206 - f * 130);
+			sb = Math.floor(235 - f * 100);
+		} else {
+			const f = (t - .75) / .25;
+			sr = Math.floor(85 - f * 75);
+			sg = Math.floor(76 - f * 66);
+			sb = Math.floor(135 - f * 105);
+		}
+		const skyHex = sr << 16 | sg << 8 | sb;
+		renderer.setClearColor(skyHex);
+		scene.fog.color.setHex(skyHex);
+		const sunInt = Math.max(0, Math.sin(t * Math.PI * 2 - Math.PI / 2) * .8 + .5);
+		sun.intensity = sunInt;
+		ambient.intensity = .3 + sunInt * .4;
+		moonLight.intensity = Math.max(0, .4 - sunInt * .3);
+	}
+	function updateCarHint(playerPos, carPos) {
+		const ch = document.getElementById("car-hint");
+		const nearCar = Math.sqrt((playerPos.x - carPos.x) ** 2 + (playerPos.z - carPos.z) ** 2) < 3;
+		if (!gameState.inCar && nearCar) {
+			ch.style.display = "block";
+			ch.textContent = `[${actionControlName$1()}] Get in car 🚗`;
+		} else if (gameState.inCar) {
+			ch.style.display = "block";
+			ch.textContent = gameState.inputProfile === "touch" ? "[TAP] Exit car  |  Screen Zones Drive + Steer" : "[SPACE] Exit car  |  ↑↓ Drive  ←→ Steer";
+		} else ch.style.display = "none";
+	}
+	function updateMinimap(playerPos, carPos, deerPos, deerAlive) {
+		const ctx = document.getElementById("mm").getContext("2d");
+		const S = 110, scale = S / 124, cx = S / 2, cy = S / 2;
+		ctx.clearRect(0, 0, S, S);
+		ctx.fillStyle = "#1a3a10";
+		ctx.fillRect(0, 0, S, S);
+		ctx.beginPath();
+		ctx.arc(cx, cy, 50 * scale, 0, Math.PI * 2);
+		ctx.fillStyle = "#2d5a1b";
+		ctx.fill();
+		ctx.beginPath();
+		ctx.arc(cx, cy, 8 * scale, 0, Math.PI * 2);
+		ctx.fillStyle = "#4a8a3a";
+		ctx.fill();
+		ctx.fillStyle = "#555";
+		ctx.fillRect(cx + 50 * scale, cy - 2, 40, 4);
+		ctx.fillStyle = "#556";
+		ctx.fillRect(cx + 50 * scale + 37, cy - 5, 10, 10);
+		ctx.fillStyle = "#0f0";
+		ctx.fillRect(cx + 50 * scale + 38, cy - 4, 8, 8);
+		for (const t of trees) {
+			if (!t.alive) continue;
+			ctx.fillStyle = "#1a4a10";
+			ctx.fillRect(cx + t.x * scale - 1, cy + t.z * scale - 1, 2, 2);
+		}
+		for (const m of mines) {
+			if (!m.alive) continue;
+			ctx.fillStyle = "#888";
+			ctx.fillRect(cx + m.x * scale - 2, cy + m.z * scale - 2, 4, 4);
+		}
+		for (const a of aliens) {
+			if (!a.alive) continue;
+			ctx.fillStyle = "#0f0";
+			ctx.beginPath();
+			ctx.arc(cx + a.pos.x * scale, cy + a.pos.z * scale, 3, 0, Math.PI * 2);
+			ctx.fill();
+		}
+		for (const z of zombies) {
+			if (!z.alive) continue;
+			ctx.fillStyle = "#fa0";
+			ctx.beginPath();
+			ctx.arc(cx + z.pos.x * scale, cy + z.pos.z * scale, 3, 0, Math.PI * 2);
+			ctx.fill();
+		}
+		if (deerAlive) {
+			ctx.fillStyle = "#e74c3c";
+			ctx.beginPath();
+			ctx.arc(cx + deerPos.x * scale, cy + deerPos.z * scale, 3, 0, Math.PI * 2);
+			ctx.fill();
+		}
+		ctx.fillStyle = "#f55";
+		ctx.fillRect(cx + carPos.x * scale - 3, cy + carPos.z * scale - 2, 6, 4);
+		ctx.fillStyle = "#3af";
+		ctx.beginPath();
+		ctx.arc(cx + playerPos.x * scale, cy + playerPos.z * scale, 3, 0, Math.PI * 2);
+		ctx.fill();
+	}
+	function triggerWin() {
+		gameState.gameWon = true;
+		gameState.deerAlive = false;
+		showMessage(`🎉 <strong>VICTORY!</strong><br><br>You slew the vicious deer!<br>The forest is saved.<br><br><em style="font-size:13px">Reload to play again</em>`);
+	}
+	function triggerDeath(by = "deer") {
+		gameState.gameOver = true;
+		const msgs = {
+			deer: "🦌 The deer ate you.",
+			alien: "👽 Abducted and probed.",
+			zombie: "🧟 You became a zombie."
+		};
+		showMessage(`💀 <strong>YOU DIED</strong><br><br>${msgs[by] || msgs.deer}<br><br><em style="font-size:13px">Reload to try again</em>`);
+	}
+	//#endregion
+	//#region src/audio.ts
+	let audioCtx = null;
+	let musicMasterGain = null;
+	let sfxMasterGain = null;
+	let musicStarted = false;
+	let deerYellInterval = null;
+	function initAudio() {
+		if (audioCtx) return;
+		audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+		musicMasterGain = audioCtx.createGain();
+		musicMasterGain.gain.value = .18;
+		sfxMasterGain = audioCtx.createGain();
+		sfxMasterGain.gain.value = 1;
+		musicMasterGain.connect(audioCtx.destination);
+		sfxMasterGain.connect(audioCtx.destination);
+		startSpookyMusic();
+		schedulePlayerSounds();
+	}
+	/** Updates the Web Audio listener to match the camera's position for spatial audio. */
+	function updateAudioListener(x, y, z, forwardX, forwardY, forwardZ) {
+		if (!audioCtx) return;
+		const l = audioCtx.listener;
+		if (l.positionX) {
+			const now = audioCtx.currentTime;
+			l.positionX.setTargetAtTime(x, now, .1);
+			l.positionY.setTargetAtTime(y, now, .1);
+			l.positionZ.setTargetAtTime(z, now, .1);
+			l.forwardX.setTargetAtTime(forwardX, now, .1);
+			l.forwardY.setTargetAtTime(forwardY, now, .1);
+			l.forwardZ.setTargetAtTime(forwardZ, now, .1);
+		} else {
+			l.setPosition(x, y, z);
+			l.setOrientation(forwardX, forwardY, forwardZ, 0, 1, 0);
+		}
+	}
+	function note(midi) {
+		return 440 * Math.pow(2, (midi - 69) / 12);
+	}
+	function makeReverb(ctx, seconds = 2.5, decay = 2) {
+		const conv = ctx.createConvolver();
+		const rate = ctx.sampleRate, len = rate * seconds;
+		const buf = ctx.createBuffer(2, len, rate);
+		for (let c = 0; c < 2; c++) {
+			const d = buf.getChannelData(c);
+			for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, decay);
+		}
+		conv.buffer = buf;
+		return conv;
+	}
+	function createPanner(pos) {
+		if (!audioCtx || !pos) return sfxMasterGain;
+		const panner = audioCtx.createPanner();
+		panner.panningModel = "HRTF";
+		panner.distanceModel = "exponential";
+		panner.refDistance = 1;
+		panner.maxDistance = 100;
+		panner.rolloffFactor = 1.5;
+		panner.positionX.value = pos.x;
+		panner.positionY.value = pos.y;
+		panner.positionZ.value = pos.z;
+		panner.connect(sfxMasterGain);
+		return panner;
+	}
+	function startSpookyMusic() {
+		if (!audioCtx || musicStarted) return;
+		musicStarted = true;
+		const rev = makeReverb(audioCtx, 3.5, 1.8);
+		rev.connect(musicMasterGain);
+		[36, 43].forEach((n, idx) => {
+			const osc = audioCtx.createOscillator();
+			const gain = audioCtx.createGain();
+			osc.type = "sawtooth";
+			osc.frequency.value = note(n) + (idx ? .4 : -.3);
+			gain.gain.value = .06;
+			osc.connect(gain);
+			gain.connect(rev);
+			osc.start();
+			const lfoRate = .05 + idx * .02;
+			setInterval(() => {
+				if (!audioCtx) return;
+				const now = audioCtx.currentTime;
+				const v = .03 + .05 * Math.abs(Math.sin(now * lfoRate * Math.PI));
+				gain.gain.setTargetAtTime(v, now, 1.5);
+			}, 200);
+		});
+		const SPOOKY_PHRASES = [
+			[
+				60,
+				null,
+				63,
+				null,
+				67,
+				65,
+				63,
+				null,
+				60
+			],
+			[
+				72,
+				70,
+				68,
+				null,
+				67,
+				null,
+				65,
+				63,
+				60
+			],
+			[
+				60,
+				63,
+				67,
+				null,
+				70,
+				68,
+				null,
+				65,
+				63
+			],
+			[
+				67,
+				null,
+				68,
+				65,
+				null,
+				63,
+				60,
+				null,
+				58,
+				60
+			]
+		];
+		let phraseIdx = 0, noteIdx = 0;
+		let violinPhrase = SPOOKY_PHRASES[0];
+		function playViolinNote() {
+			if (!audioCtx || !musicStarted) return;
+			const mn = violinPhrase[noteIdx++];
+			if (noteIdx >= violinPhrase.length) {
+				noteIdx = 0;
+				phraseIdx = (phraseIdx + 1) % SPOOKY_PHRASES.length;
+				violinPhrase = SPOOKY_PHRASES[phraseIdx];
+			}
+			if (mn === null) {
+				setTimeout(playViolinNote, 300);
+				return;
+			}
+			const dur = .55 + Math.random() * .4;
+			const freq = note(mn) + (Math.random() - .5) * 1.5;
+			const now = audioCtx.currentTime;
+			const osc = audioCtx.createOscillator(), vib = audioCtx.createOscillator();
+			const vibGn = audioCtx.createGain(), filter = audioCtx.createBiquadFilter(), gainN = audioCtx.createGain();
+			osc.type = "sawtooth";
+			osc.frequency.value = freq;
+			vib.type = "sine";
+			vib.frequency.value = 5.5;
+			vibGn.gain.value = 4;
+			vib.connect(vibGn);
+			vibGn.connect(osc.frequency);
+			filter.type = "bandpass";
+			filter.frequency.value = freq * 2;
+			filter.Q.value = 2.5;
+			gainN.gain.setValueAtTime(0, now);
+			gainN.gain.linearRampToValueAtTime(.22, now + .08);
+			gainN.gain.setTargetAtTime(0, now + dur * .7, dur * .15);
+			osc.connect(filter);
+			filter.connect(gainN);
+			gainN.connect(rev);
+			osc.start(now);
+			osc.stop(now + dur + .2);
+			vib.start(now);
+			vib.stop(now + dur + .2);
+			setTimeout(playViolinNote, (dur + .05 + Math.random() * .2) * 1e3);
+		}
+		setTimeout(playViolinNote, 800);
+		const OCARINA_MOTIFS = [
+			[
+				67,
+				null,
+				null,
+				65,
+				null,
+				63,
+				null,
+				null,
+				62,
+				null,
+				60
+			],
+			[
+				60,
+				null,
+				63,
+				null,
+				60,
+				null,
+				58,
+				null,
+				60
+			],
+			[
+				72,
+				null,
+				null,
+				70,
+				68,
+				null,
+				65,
+				null,
+				null
+			],
+			[
+				63,
+				65,
+				null,
+				68,
+				null,
+				65,
+				63,
+				null,
+				null,
+				60,
+				null
+			]
+		];
+		let omIdx = 0, onIdx = 0;
+		let oMotif = OCARINA_MOTIFS[0];
+		function playOcarinaNote() {
+			if (!audioCtx || !musicStarted) return;
+			const mn = oMotif[onIdx++];
+			if (onIdx >= oMotif.length) {
+				onIdx = 0;
+				omIdx = (omIdx + 1) % OCARINA_MOTIFS.length;
+				oMotif = OCARINA_MOTIFS[omIdx];
+			}
+			const dur = .45 + Math.random() * .35;
+			if (mn !== null) {
+				const freq = note(mn) * (.995 + Math.random() * .012);
+				const now = audioCtx.currentTime;
+				const osc1 = audioCtx.createOscillator(), osc2 = audioCtx.createOscillator();
+				const g = audioCtx.createGain(), gMix = audioCtx.createGain();
+				osc1.type = "sine";
+				osc1.frequency.value = freq;
+				osc2.type = "sine";
+				osc2.frequency.value = freq * 2.01;
+				gMix.gain.value = .18;
+				g.gain.setValueAtTime(0, now);
+				g.gain.linearRampToValueAtTime(.28, now + .06);
+				g.gain.setTargetAtTime(0, now + dur * .65, dur * .12);
+				osc1.connect(g);
+				osc2.connect(gMix);
+				gMix.connect(g);
+				g.connect(rev);
+				g.connect(musicMasterGain);
+				osc1.start(now);
+				osc1.stop(now + dur + .15);
+				osc2.start(now);
+				osc2.stop(now + dur + .15);
+			}
+			setTimeout(playOcarinaNote, (dur + .12 + Math.random() * .3) * 1e3);
+		}
+		setTimeout(playOcarinaNote, 2200);
+		function pizzicato() {
+			if (!audioCtx || !musicStarted) return;
+			const pizzNotes = [
+				36,
+				38,
+				41,
+				43,
+				46
+			];
+			const n = pizzNotes[Math.floor(Math.random() * pizzNotes.length)];
+			const now = audioCtx.currentTime;
+			const osc = audioCtx.createOscillator(), gain = audioCtx.createGain();
+			osc.type = "triangle";
+			osc.frequency.value = note(n);
+			gain.gain.setValueAtTime(.18, now);
+			gain.gain.exponentialRampToValueAtTime(.001, now + 1.2);
+			osc.connect(gain);
+			gain.connect(rev);
+			osc.start(now);
+			osc.stop(now + 1.5);
+			setTimeout(pizzicato, 1800 + Math.random() * 3500);
+		}
+		setTimeout(pizzicato, 1200);
+	}
+	function playDeerYell(type, pos) {
+		if (!audioCtx) return;
+		const now = audioCtx.currentTime;
+		const dest = createPanner(pos);
+		if (type === "chase") {
+			const osc = audioCtx.createOscillator(), osc2 = audioCtx.createOscillator();
+			const filter = audioCtx.createBiquadFilter(), gain = audioCtx.createGain();
+			osc.type = "sawtooth";
+			osc.frequency.setValueAtTime(180 + Math.random() * 40, now);
+			osc.frequency.exponentialRampToValueAtTime(70, now + .6);
+			osc2.type = "square";
+			osc2.frequency.setValueAtTime(60, now);
+			osc2.frequency.linearRampToValueAtTime(40, now + .8);
+			filter.type = "lowpass";
+			filter.frequency.setValueAtTime(2e3, now);
+			filter.frequency.exponentialRampToValueAtTime(300, now + .8);
+			gain.gain.setValueAtTime(0, now);
+			gain.gain.linearRampToValueAtTime(.6, now + .05);
+			gain.gain.exponentialRampToValueAtTime(.001, now + .8);
+			osc.connect(filter);
+			osc2.connect(filter);
+			filter.connect(gain);
+			gain.connect(dest);
+			osc.start(now);
+			osc.stop(now + 1);
+			osc2.start(now);
+			osc2.stop(now + 1);
+			setTimeout(() => {
+				if (!audioCtx) return;
+				const n2 = audioCtx.currentTime;
+				const s = audioCtx.createOscillator(), g = audioCtx.createGain(), f = audioCtx.createBiquadFilter();
+				s.type = "sawtooth";
+				s.frequency.setValueAtTime(320 + Math.random() * 80, n2);
+				s.frequency.exponentialRampToValueAtTime(120, n2 + .3);
+				f.type = "lowpass";
+				f.frequency.value = 600;
+				g.gain.setValueAtTime(.4, n2);
+				g.gain.exponentialRampToValueAtTime(.001, n2 + .4);
+				s.connect(f);
+				f.connect(g);
+				g.connect(dest);
+				s.start(n2);
+				s.stop(n2 + .5);
+			}, 400);
+		} else {
+			const osc = audioCtx.createOscillator(), mod = audioCtx.createOscillator(), modG = audioCtx.createGain();
+			const rev2 = makeReverb(audioCtx, 3, 2.5);
+			rev2.connect(dest);
+			const gain = audioCtx.createGain();
+			const baseFreq = 160 + Math.random() * 60;
+			osc.type = "sine";
+			osc.frequency.setValueAtTime(baseFreq, now);
+			osc.frequency.exponentialRampToValueAtTime(baseFreq * 1.5, now + .6);
+			osc.frequency.exponentialRampToValueAtTime(baseFreq * .8, now + 1.8);
+			mod.type = "sawtooth";
+			mod.frequency.value = 45;
+			modG.gain.value = baseFreq * .2;
+			mod.connect(modG);
+			modG.connect(osc.frequency);
+			gain.gain.setValueAtTime(0, now);
+			gain.gain.linearRampToValueAtTime(.3, now + .4);
+			gain.gain.exponentialRampToValueAtTime(.001, now + 2);
+			osc.connect(gain);
+			gain.connect(rev2);
+			osc.start(now);
+			osc.stop(now + 2);
+			mod.start(now);
+			mod.stop(now + 2);
+		}
+	}
+	function playDeerAttackRoar(pos) {
+		if (!audioCtx) return;
+		const now = audioCtx.currentTime;
+		const dest = createPanner(pos);
+		const bufLen = audioCtx.sampleRate * .8;
+		const buf = audioCtx.createBuffer(1, bufLen, audioCtx.sampleRate);
+		const d = buf.getChannelData(0);
+		for (let i = 0; i < bufLen; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / bufLen, 2);
+		const src = audioCtx.createBufferSource(), f = audioCtx.createBiquadFilter(), g = audioCtx.createGain();
+		src.buffer = buf;
+		f.type = "lowpass";
+		f.frequency.setValueAtTime(800, now);
+		f.frequency.exponentialRampToValueAtTime(150, now + .6);
+		g.gain.setValueAtTime(1, now);
+		g.gain.exponentialRampToValueAtTime(.001, now + .75);
+		src.connect(f);
+		f.connect(g);
+		g.connect(dest);
+		src.start(now);
+		const sub = audioCtx.createOscillator(), subG = audioCtx.createGain();
+		sub.type = "sawtooth";
+		sub.frequency.setValueAtTime(120, now);
+		sub.frequency.linearRampToValueAtTime(40, now + .5);
+		subG.gain.setValueAtTime(.6, now);
+		subG.gain.exponentialRampToValueAtTime(.001, now + .5);
+		sub.connect(subG);
+		subG.connect(dest);
+		sub.start(now);
+		sub.stop(now + .6);
+	}
+	function schedulePlayerSounds() {
+		const delay = (8 + Math.random() * 12) * 1e3;
+		setTimeout(() => {
+			if (!gameState.gameOver && !gameState.gameWon && audioCtx) {
+				const r = Math.random();
+				if (r < .33) playBurp();
+				else if (r < .66) playWhistle();
+				else playFart();
+			}
+			schedulePlayerSounds();
+		}, delay);
+	}
+	function playBurp() {
+		if (!audioCtx) return;
+		const now = audioCtx.currentTime;
+		const dur = .5 + Math.random() * .2;
+		const bufLen = audioCtx.sampleRate * dur;
+		const buf = audioCtx.createBuffer(1, bufLen, audioCtx.sampleRate);
+		const d = buf.getChannelData(0);
+		const baseFreq = 80 + Math.random() * 20;
+		for (let i = 0; i < bufLen; i++) {
+			const t = i / audioCtx.sampleRate;
+			const env = Math.pow(Math.sin(Math.PI * i / bufLen), .3) * (1 - t / dur);
+			const mod = 1 + .4 * Math.sin(2 * Math.PI * 30 * t);
+			const noise = (Math.random() * 2 - 1) * .4;
+			d[i] = (Math.sin(2 * Math.PI * baseFreq * t * (1 - t * .5)) + noise) * env * mod * .6;
+		}
+		const src = audioCtx.createBufferSource(), filt = audioCtx.createBiquadFilter(), gain = audioCtx.createGain();
+		src.buffer = buf;
+		filt.type = "lowpass";
+		filt.frequency.value = 600;
+		gain.gain.value = .8;
+		src.connect(filt);
+		filt.connect(gain);
+		gain.connect(sfxMasterGain);
+		src.start(now);
+		showFloatingText("💨 *burp*");
+	}
+	function playWhistle() {
+		if (!audioCtx) return;
+		const now = audioCtx.currentTime;
+		const tunes = [
+			[
+				72,
+				76,
+				74
+			],
+			[
+				74,
+				72,
+				67
+			],
+			[
+				76,
+				79,
+				76
+			],
+			[
+				67,
+				72,
+				74
+			]
+		];
+		tunes[Math.floor(Math.random() * tunes.length)].forEach((mn, idx) => {
+			const t = now + idx * .35;
+			const dur = .3;
+			const freq = note(mn);
+			const osc = audioCtx.createOscillator(), vib = audioCtx.createOscillator(), vibG = audioCtx.createGain();
+			const gain = audioCtx.createGain(), noise = audioCtx.createBufferSource();
+			vib.frequency.value = 5 + Math.random() * 2;
+			vibG.gain.value = freq * .015;
+			vib.connect(vibG);
+			vibG.connect(osc.frequency);
+			osc.type = "sine";
+			osc.frequency.value = freq;
+			const nBuf = audioCtx.createBuffer(1, audioCtx.sampleRate * dur, audioCtx.sampleRate);
+			const nData = nBuf.getChannelData(0);
+			for (let i = 0; i < nData.length; i++) nData[i] = (Math.random() * 2 - 1) * .02;
+			noise.buffer = nBuf;
+			gain.gain.setValueAtTime(0, t);
+			gain.gain.linearRampToValueAtTime(.4, t + .05);
+			gain.gain.exponentialRampToValueAtTime(.001, t + dur);
+			osc.connect(gain);
+			noise.connect(gain);
+			gain.connect(sfxMasterGain);
+			osc.start(t);
+			osc.stop(t + dur);
+			vib.start(t);
+			vib.stop(t + dur);
+			noise.start(t);
+			noise.stop(t + dur);
+		});
+		showFloatingText("🎵 *whistle*");
+	}
+	function playFart() {
+		if (!audioCtx) return;
+		const now = audioCtx.currentTime;
+		const dur = .3 + Math.random() * .4;
+		const bufLen = Math.floor(audioCtx.sampleRate * dur);
+		const buf = audioCtx.createBuffer(1, bufLen, audioCtx.sampleRate);
+		const d = buf.getChannelData(0);
+		const baseFreq = 60 + Math.random() * 40, flutterRate = 18 + Math.random() * 12;
+		for (let i = 0; i < bufLen; i++) {
+			const t = i / audioCtx.sampleRate;
+			const env = Math.pow(Math.sin(Math.PI * i / bufLen), .5) * (1 - t / dur * .3);
+			const flutter = .5 + .5 * Math.sin(2 * Math.PI * flutterRate * t);
+			d[i] = (Math.random() * 2 - 1) * .4 * flutter * env + Math.sin(2 * Math.PI * baseFreq * (1 + t * .3) * t) * .6 * flutter * env;
+		}
+		const src = audioCtx.createBufferSource(), filt = audioCtx.createBiquadFilter(), gain = audioCtx.createGain();
+		src.buffer = buf;
+		filt.type = "lowpass";
+		filt.frequency.value = 400;
+		gain.gain.value = .65;
+		src.connect(filt);
+		filt.connect(gain);
+		gain.connect(sfxMasterGain);
+		src.start(now);
+		showFloatingText("💨 *pfffft*");
+	}
+	function playSfxChop(pos) {
+		if (!audioCtx) return;
+		const now = audioCtx.currentTime;
+		const dest = createPanner(pos);
+		const thud = audioCtx.createOscillator(), thudG = audioCtx.createGain();
+		thud.type = "sine";
+		thud.frequency.setValueAtTime(140, now);
+		thud.frequency.exponentialRampToValueAtTime(40, now + .1);
+		thudG.gain.setValueAtTime(.6, now);
+		thudG.gain.exponentialRampToValueAtTime(.001, now + .15);
+		thud.connect(thudG);
+		thudG.connect(dest);
+		thud.start(now);
+		thud.stop(now + .2);
+		const buf = audioCtx.createBuffer(1, audioCtx.sampleRate * .15, audioCtx.sampleRate);
+		const d = buf.getChannelData(0);
+		for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / d.length, 2);
+		const src = audioCtx.createBufferSource(), filt = audioCtx.createBiquadFilter(), g = audioCtx.createGain();
+		src.buffer = buf;
+		filt.type = "bandpass";
+		filt.frequency.value = 1200;
+		filt.Q.value = 1.2;
+		g.gain.value = .5;
+		src.connect(filt);
+		filt.connect(g);
+		g.connect(dest);
+		src.start(now);
+	}
+	function playSfxSwing(pos) {
+		if (!audioCtx) return;
+		const now = audioCtx.currentTime;
+		const dest = createPanner(pos);
+		const bufLen = audioCtx.sampleRate * .25;
+		const buf = audioCtx.createBuffer(1, bufLen, audioCtx.sampleRate);
+		const d = buf.getChannelData(0);
+		for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+		const src = audioCtx.createBufferSource(), f = audioCtx.createBiquadFilter(), g = audioCtx.createGain();
+		src.buffer = buf;
+		f.type = "bandpass";
+		f.frequency.setValueAtTime(400, now);
+		f.frequency.exponentialRampToValueAtTime(1800, now + .08);
+		f.frequency.exponentialRampToValueAtTime(600, now + .2);
+		f.Q.value = 1.5;
+		g.gain.setValueAtTime(0, now);
+		g.gain.linearRampToValueAtTime(.4, now + .05);
+		g.gain.exponentialRampToValueAtTime(.001, now + .25);
+		src.connect(f);
+		f.connect(g);
+		g.connect(dest);
+		src.start(now);
+	}
+	function playSfxCraft(pos) {
+		if (!audioCtx) return;
+		const now = audioCtx.currentTime;
+		const dest = createPanner(pos);
+		[
+			0,
+			.08,
+			.16
+		].forEach((delay, i) => {
+			const osc = audioCtx.createOscillator(), g = audioCtx.createGain();
+			osc.type = "triangle";
+			osc.frequency.value = note(72 + i * 5);
+			g.gain.setValueAtTime(.2, now + delay);
+			g.gain.exponentialRampToValueAtTime(.001, now + delay + .2);
+			osc.connect(g);
+			g.connect(dest);
+			osc.start(now + delay);
+			osc.stop(now + delay + .25);
+		});
+	}
+	function sfxStep(pos, type = "grass") {
+		if (!audioCtx) return;
+		const now = audioCtx.currentTime;
+		const dest = createPanner(pos);
+		const bufLen = audioCtx.sampleRate * .08;
+		const buf = audioCtx.createBuffer(1, bufLen, audioCtx.sampleRate);
+		const d = buf.getChannelData(0);
+		for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / d.length, 2);
+		const src = audioCtx.createBufferSource(), f = audioCtx.createBiquadFilter(), g = audioCtx.createGain();
+		src.buffer = buf;
+		f.type = "bandpass";
+		f.frequency.value = type === "grass" ? 400 : 250;
+		f.Q.value = 1;
+		g.gain.value = .15;
+		src.connect(f);
+		f.connect(g);
+		g.connect(dest);
+		src.start(now);
+	}
+	function playSfxDeerStep(pos) {
+		if (!audioCtx) return;
+		const now = audioCtx.currentTime;
+		const dest = createPanner(pos);
+		const bufLen = audioCtx.sampleRate * .12;
+		const buf = audioCtx.createBuffer(1, bufLen, audioCtx.sampleRate);
+		const d = buf.getChannelData(0);
+		for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / d.length, 1.5);
+		const src = audioCtx.createBufferSource(), f = audioCtx.createBiquadFilter(), g = audioCtx.createGain();
+		src.buffer = buf;
+		f.type = "lowpass";
+		f.frequency.value = 200;
+		g.gain.value = .25;
+		src.connect(f);
+		f.connect(g);
+		g.connect(dest);
+		src.start(now);
+	}
+	function sfxAlien(pos) {
+		if (!audioCtx) return;
+		const now = audioCtx.currentTime;
+		const dest = createPanner(pos);
+		const osc = audioCtx.createOscillator(), lfo = audioCtx.createOscillator(), lfoG = audioCtx.createGain();
+		osc.type = "sine";
+		osc.frequency.setValueAtTime(800, now);
+		osc.frequency.exponentialRampToValueAtTime(1200, now + .3);
+		lfo.type = "square";
+		lfo.frequency.value = 25;
+		lfoG.gain.value = 150;
+		lfo.connect(lfoG);
+		lfoG.connect(osc.frequency);
+		const g = audioCtx.createGain();
+		g.gain.setValueAtTime(.2, now);
+		g.gain.exponentialRampToValueAtTime(.001, now + .35);
+		osc.connect(g);
+		g.connect(dest);
+		osc.start(now);
+		osc.stop(now + .4);
+		lfo.start(now);
+		lfo.stop(now + .4);
+	}
+	function sfxZombie(pos) {
+		if (!audioCtx) return;
+		const now = audioCtx.currentTime;
+		const dest = createPanner(pos);
+		const osc = audioCtx.createOscillator(), filt = audioCtx.createBiquadFilter(), g = audioCtx.createGain();
+		osc.type = "sawtooth";
+		osc.frequency.setValueAtTime(70, now);
+		osc.frequency.linearRampToValueAtTime(45, now + .6);
+		filt.type = "lowpass";
+		filt.frequency.value = 350;
+		g.gain.setValueAtTime(.5, now);
+		g.gain.exponentialRampToValueAtTime(.001, now + .7);
+		osc.connect(filt);
+		filt.connect(g);
+		g.connect(dest);
+		osc.start(now);
+		osc.stop(now + .8);
+	}
+	function sfxSquash(pos) {
+		if (!audioCtx) return;
+		const now = audioCtx.currentTime;
+		const dest = createPanner(pos);
+		const bufLen = audioCtx.sampleRate * .15;
+		const buf = audioCtx.createBuffer(1, bufLen, audioCtx.sampleRate);
+		const d = buf.getChannelData(0);
+		for (let i = 0; i < bufLen; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / bufLen, .5);
+		const src = audioCtx.createBufferSource(), filt = audioCtx.createBiquadFilter(), g = audioCtx.createGain();
+		src.buffer = buf;
+		filt.type = "lowpass";
+		filt.frequency.value = 180;
+		g.gain.value = 1.2;
+		src.connect(filt);
+		filt.connect(g);
+		g.connect(dest);
+		src.start(now);
+	}
+	function sfxChop(pos) {
+		if (audioCtx) playSfxChop(pos);
+	}
+	function sfxSwing(pos) {
+		if (audioCtx) playSfxSwing(pos);
+	}
+	function sfxCraft(pos) {
+		if (audioCtx) playSfxCraft(pos);
+	}
+	function sfxDeerRoar(pos) {
+		if (audioCtx) playDeerAttackRoar(pos);
+	}
+	function sfxDeerStep(pos) {
+		if (audioCtx) playSfxDeerStep(pos);
+	}
+	function startDeerYells() {
+		if (deerYellInterval) return;
+		deerYellInterval = setInterval(() => {
+			if (!gameState.gameOver && !gameState.gameWon && gameState.deerAlive && audioCtx) {
+				const pos = {
+					x: gameState.deerPos?.x || 0,
+					y: 0,
+					z: gameState.deerPos?.z || 0
+				};
+				if (gameState.deerState === "chase") playDeerYell("chase", pos);
+				else if (Math.random() < .4) playDeerYell("wander", pos);
+			}
+		}, 4e3 + Math.random() * 5e3);
+	}
+	//#endregion
 	//#region src/player.ts
 	const playerGroup = new THREE.Group();
 	scene.add(playerGroup);
 	const player = {
 		pos: new THREE.Vector3(52, 0, 0),
 		facing: Math.PI,
-		invincTimer: 0
+		invincTimer: 0,
+		stepTimer: 0
 	};
 	playerGroup.position.copy(player.pos);
 	function buildPlayer() {
@@ -309,9 +1246,7 @@
 		}
 		const nx = player.pos.x + mx * dt, nz = player.pos.z + mz * dt;
 		if (dist2D(nx, nz, 0, 0) < 60) {
-			let blocked = checkTreeCollision(nx, nz, .4);
-			if (!blocked && gameState.workbenchPos && dist2D(nx, nz, gameState.workbenchPos.x, gameState.workbenchPos.z) < .9) blocked = true;
-			if (!blocked) {
+			if (!checkWorldCollision(nx, nz, .4)) {
 				player.pos.x = nx;
 				player.pos.z = nz;
 			}
@@ -321,6 +1256,13 @@
 		playerGroup.position.x = player.pos.x;
 		playerGroup.position.z = player.pos.z;
 		playerGroup.rotation.y = player.facing + Math.PI;
+		if (moving) {
+			player.stepTimer -= dt;
+			if (player.stepTimer <= 0) {
+				sfxStep(player.pos, "grass");
+				player.stepTimer = .35;
+			}
+		} else player.stepTimer = 0;
 		if (player.invincTimer > 0) {
 			player.invincTimer -= dt;
 			playerGroup.visible = Math.sin(Date.now() * .025) > 0;
@@ -856,8 +1798,16 @@
 			let speed = 0;
 			if (keys["ArrowUp"]) speed = 14;
 			if (keys["ArrowDown"]) speed = -14 * .5;
-			carPos.x -= Math.sin(gameState.carFacing) * speed * dt;
-			carPos.z -= Math.cos(gameState.carFacing) * speed * dt;
+			const nx = carPos.x - Math.sin(gameState.carFacing) * speed * dt;
+			const nz = carPos.z - Math.cos(gameState.carFacing) * speed * dt;
+			const fwdX = -Math.sin(gameState.carFacing);
+			const fwdZ = -Math.cos(gameState.carFacing);
+			const frontX = nx + fwdX * 1.2, frontZ = nz + fwdZ * 1.2;
+			const rearX = nx - fwdX * 1.2, rearZ = nz - fwdZ * 1.2;
+			if (!checkWorldCollision(frontX, frontZ, .7) && !checkWorldCollision(rearX, rearZ, .7)) {
+				carPos.x = nx;
+				carPos.z = nz;
+			}
 			player.pos.copy(carPos);
 			player.facing = gameState.carFacing;
 		}
@@ -873,733 +1823,6 @@
 		taillightMat.emissiveIntensity = keys["ArrowDown"] && gameState.inCar ? 1.9 : 1;
 	}
 	//#endregion
-	//#region src/ui.ts
-	function actionControlName$1() {
-		return gameState.inputProfile === "touch" ? "TAP" : "SPACE";
-	}
-	function setActionHint(txt) {
-		document.getElementById("action-hint").textContent = txt;
-	}
-	function showMessage(html, dur = 0) {
-		const el = document.getElementById("message");
-		el.innerHTML = html;
-		el.style.display = "block";
-		if (dur > 0) setTimeout(() => {
-			if (el.style.display !== "none") el.style.display = "none";
-		}, dur);
-	}
-	function hideMessage() {
-		document.getElementById("message").style.display = "none";
-	}
-	function flashColor(col) {
-		const f = document.getElementById("screen-flash");
-		f.style.background = col;
-		f.style.opacity = "1";
-		setTimeout(() => {
-			f.style.opacity = "0";
-		}, 140);
-	}
-	function showEventBanner(txt, dur, col = "#f00") {
-		const b = document.getElementById("event-banner");
-		b.textContent = txt;
-		b.style.borderColor = col;
-		b.style.display = "block";
-		if (dur > 0) setTimeout(() => {
-			b.style.display = "none";
-		}, dur);
-	}
-	function showFloatingText(txt) {
-		const el = document.createElement("div");
-		el.textContent = txt;
-		el.style.cssText = "position:fixed;left:50%;top:42%;transform:translateX(-50%);color:#fff;font-size:16px;font-family:Courier New,monospace;text-shadow:1px 1px 0 #000;pointer-events:none;z-index:50;transition:opacity 1s,top 1s;";
-		document.body.appendChild(el);
-		setTimeout(() => {
-			el.style.opacity = "0";
-			el.style.top = "36%";
-		}, 100);
-		setTimeout(() => el.remove(), 1200);
-	}
-	function updateHUD(deer, player) {
-		document.getElementById("health-fill").style.width = Math.max(0, gameState.playerHP) + "%";
-		document.getElementById("health-text").textContent = String(Math.ceil(Math.max(0, gameState.playerHP)));
-		document.getElementById("deer-fill").style.width = gameState.deerHP + "%";
-		document.getElementById("deer-text").textContent = String(Math.ceil(gameState.deerHP));
-		document.getElementById("resource-info").innerHTML = `\u{1FAB5} ${gameState.resources.wood} &nbsp; ⛰️ ${gameState.resources.ore}`;
-		const inv = document.getElementById("inventory");
-		inv.innerHTML = "";
-		[
-			{
-				icon: "🪓",
-				label: "Axe",
-				show: !gameState.hasSword
-			},
-			{
-				icon: "⛏️",
-				label: "Pickaxe",
-				show: gameState.hasPickaxe
-			},
-			{
-				icon: "🗡️",
-				label: "Sword",
-				show: gameState.hasSword
-			},
-			{
-				icon: "🪵",
-				label: `Wood×${gameState.resources.wood}`,
-				show: gameState.resources.wood > 0
-			},
-			{
-				icon: "⛰️",
-				label: `Ore×${gameState.resources.ore}`,
-				show: gameState.resources.ore > 0
-			},
-			{
-				icon: "🚗",
-				label: "Car",
-				show: true
-			}
-		].forEach((item) => {
-			if (!item.show) return;
-			const d = document.createElement("div");
-			d.className = "inv-slot";
-			d.innerHTML = `<div class="icon">${item.icon}</div><div>${item.label}</div>`;
-			inv.appendChild(d);
-		});
-		[
-			"obj0",
-			"obj1",
-			"obj2",
-			"obj3",
-			"obj4"
-		].forEach((id, i) => {
-			const el = document.getElementById(id);
-			if (i < gameState.stage) el.className = "done";
-			else if (i === gameState.stage) el.className = "active";
-			else el.className = "";
-		});
-	}
-	function updateClock(renderer, scene, sun, ambient, moonLight) {
-		const t = gameState.dayTime;
-		const names = [
-			"🌙 Night",
-			"🌅 Dawn",
-			"🌄 Morning",
-			"☀️ Noon",
-			"🌇 Dusk",
-			"🌆 Evening",
-			"🌙 Night"
-		];
-		const idx = Math.min(Math.floor((t + 1 / 14) % 1 * 7), 6);
-		document.getElementById("clock").textContent = names[idx];
-		let sr, sg, sb;
-		if (t < .25) {
-			const f = t / .25;
-			sr = Math.floor(10 + f * 120);
-			sg = Math.floor(10 + f * 100);
-			sb = Math.floor(30 + f * 140);
-		} else if (t < .5) {
-			const f = (t - .25) / .25;
-			sr = Math.floor(130 + f * 5);
-			sg = Math.floor(110 + f * 96);
-			sb = Math.floor(170 + f * 65);
-		} else if (t < .75) {
-			const f = (t - .5) / .25;
-			sr = Math.floor(135 - f * 50);
-			sg = Math.floor(206 - f * 130);
-			sb = Math.floor(235 - f * 100);
-		} else {
-			const f = (t - .75) / .25;
-			sr = Math.floor(85 - f * 75);
-			sg = Math.floor(76 - f * 66);
-			sb = Math.floor(135 - f * 105);
-		}
-		const skyHex = sr << 16 | sg << 8 | sb;
-		renderer.setClearColor(skyHex);
-		scene.fog.color.setHex(skyHex);
-		const sunInt = Math.max(0, Math.sin(t * Math.PI * 2 - Math.PI / 2) * .8 + .5);
-		sun.intensity = sunInt;
-		ambient.intensity = .3 + sunInt * .4;
-		moonLight.intensity = Math.max(0, .4 - sunInt * .3);
-	}
-	function updateCarHint(playerPos, carPos) {
-		const ch = document.getElementById("car-hint");
-		const nearCar = Math.sqrt((playerPos.x - carPos.x) ** 2 + (playerPos.z - carPos.z) ** 2) < 3;
-		if (!gameState.inCar && nearCar) {
-			ch.style.display = "block";
-			ch.textContent = `[${actionControlName$1()}] Get in car 🚗`;
-		} else if (gameState.inCar) {
-			ch.style.display = "block";
-			ch.textContent = gameState.inputProfile === "touch" ? "[TAP] Exit car  |  Screen Zones Drive + Steer" : "[SPACE] Exit car  |  ↑↓ Drive  ←→ Steer";
-		} else ch.style.display = "none";
-	}
-	function updateMinimap(playerPos, carPos, deerPos, deerAlive) {
-		const ctx = document.getElementById("mm").getContext("2d");
-		const S = 110, scale = S / 124, cx = S / 2, cy = S / 2;
-		ctx.clearRect(0, 0, S, S);
-		ctx.fillStyle = "#1a3a10";
-		ctx.fillRect(0, 0, S, S);
-		ctx.beginPath();
-		ctx.arc(cx, cy, 50 * scale, 0, Math.PI * 2);
-		ctx.fillStyle = "#2d5a1b";
-		ctx.fill();
-		ctx.beginPath();
-		ctx.arc(cx, cy, 8 * scale, 0, Math.PI * 2);
-		ctx.fillStyle = "#4a8a3a";
-		ctx.fill();
-		ctx.fillStyle = "#555";
-		ctx.fillRect(cx + 50 * scale, cy - 2, 40, 4);
-		ctx.fillStyle = "#556";
-		ctx.fillRect(cx + 50 * scale + 37, cy - 5, 10, 10);
-		ctx.fillStyle = "#0f0";
-		ctx.fillRect(cx + 50 * scale + 38, cy - 4, 8, 8);
-		for (const t of trees) {
-			if (!t.alive) continue;
-			ctx.fillStyle = "#1a4a10";
-			ctx.fillRect(cx + t.x * scale - 1, cy + t.z * scale - 1, 2, 2);
-		}
-		for (const m of mines) {
-			if (!m.alive) continue;
-			ctx.fillStyle = "#888";
-			ctx.fillRect(cx + m.x * scale - 2, cy + m.z * scale - 2, 4, 4);
-		}
-		for (const a of aliens) {
-			if (!a.alive) continue;
-			ctx.fillStyle = "#0f0";
-			ctx.beginPath();
-			ctx.arc(cx + a.pos.x * scale, cy + a.pos.z * scale, 3, 0, Math.PI * 2);
-			ctx.fill();
-		}
-		for (const z of zombies) {
-			if (!z.alive) continue;
-			ctx.fillStyle = "#fa0";
-			ctx.beginPath();
-			ctx.arc(cx + z.pos.x * scale, cy + z.pos.z * scale, 3, 0, Math.PI * 2);
-			ctx.fill();
-		}
-		if (deerAlive) {
-			ctx.fillStyle = "#e74c3c";
-			ctx.beginPath();
-			ctx.arc(cx + deerPos.x * scale, cy + deerPos.z * scale, 3, 0, Math.PI * 2);
-			ctx.fill();
-		}
-		ctx.fillStyle = "#f55";
-		ctx.fillRect(cx + carPos.x * scale - 3, cy + carPos.z * scale - 2, 6, 4);
-		ctx.fillStyle = "#3af";
-		ctx.beginPath();
-		ctx.arc(cx + playerPos.x * scale, cy + playerPos.z * scale, 3, 0, Math.PI * 2);
-		ctx.fill();
-	}
-	function triggerWin() {
-		gameState.gameWon = true;
-		gameState.deerAlive = false;
-		showMessage(`🎉 <strong>VICTORY!</strong><br><br>You slew the vicious deer!<br>The forest is saved.<br><br><em style="font-size:13px">Reload to play again</em>`);
-	}
-	function triggerDeath(by = "deer") {
-		gameState.gameOver = true;
-		const msgs = {
-			deer: "🦌 The deer ate you.",
-			alien: "👽 Abducted and probed.",
-			zombie: "🧟 You became a zombie."
-		};
-		showMessage(`💀 <strong>YOU DIED</strong><br><br>${msgs[by] || msgs.deer}<br><br><em style="font-size:13px">Reload to try again</em>`);
-	}
-	//#endregion
-	//#region src/audio.ts
-	let audioCtx = null;
-	let musicMasterGain = null;
-	let sfxMasterGain = null;
-	let musicStarted = false;
-	let deerYellInterval = null;
-	function initAudio() {
-		if (audioCtx) return;
-		audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-		musicMasterGain = audioCtx.createGain();
-		musicMasterGain.gain.value = .18;
-		sfxMasterGain = audioCtx.createGain();
-		sfxMasterGain.gain.value = 1;
-		musicMasterGain.connect(audioCtx.destination);
-		sfxMasterGain.connect(audioCtx.destination);
-		startSpookyMusic();
-		schedulePlayerSounds();
-	}
-	function note(midi) {
-		return 440 * Math.pow(2, (midi - 69) / 12);
-	}
-	function makeReverb(ctx, seconds = 2.5, decay = 2) {
-		const conv = ctx.createConvolver();
-		const rate = ctx.sampleRate, len = rate * seconds;
-		const buf = ctx.createBuffer(2, len, rate);
-		for (let c = 0; c < 2; c++) {
-			const d = buf.getChannelData(c);
-			for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, decay);
-		}
-		conv.buffer = buf;
-		return conv;
-	}
-	function startSpookyMusic() {
-		if (!audioCtx || musicStarted) return;
-		musicStarted = true;
-		const rev = makeReverb(audioCtx, 3.5, 1.8);
-		rev.connect(musicMasterGain);
-		[36, 43].forEach((n, idx) => {
-			const osc = audioCtx.createOscillator();
-			const gain = audioCtx.createGain();
-			osc.type = "sawtooth";
-			osc.frequency.value = note(n) + (idx ? .4 : -.3);
-			gain.gain.value = .06;
-			osc.connect(gain);
-			gain.connect(rev);
-			osc.start();
-			const lfoRate = .05 + idx * .02;
-			setInterval(() => {
-				if (!audioCtx) return;
-				const now = audioCtx.currentTime;
-				const v = .03 + .05 * Math.abs(Math.sin(now * lfoRate * Math.PI));
-				gain.gain.setTargetAtTime(v, now, 1.5);
-			}, 200);
-		});
-		const SPOOKY_PHRASES = [
-			[
-				60,
-				null,
-				63,
-				null,
-				67,
-				65,
-				63,
-				null,
-				60
-			],
-			[
-				72,
-				70,
-				68,
-				null,
-				67,
-				null,
-				65,
-				63,
-				60
-			],
-			[
-				60,
-				63,
-				67,
-				null,
-				70,
-				68,
-				null,
-				65,
-				63
-			],
-			[
-				67,
-				null,
-				68,
-				65,
-				null,
-				63,
-				60,
-				null,
-				58,
-				60
-			]
-		];
-		let phraseIdx = 0, noteIdx = 0;
-		let violinPhrase = SPOOKY_PHRASES[0];
-		function playViolinNote() {
-			if (!audioCtx || !musicStarted) return;
-			const mn = violinPhrase[noteIdx++];
-			if (noteIdx >= violinPhrase.length) {
-				noteIdx = 0;
-				phraseIdx = (phraseIdx + 1) % SPOOKY_PHRASES.length;
-				violinPhrase = SPOOKY_PHRASES[phraseIdx];
-			}
-			if (mn === null) {
-				setTimeout(playViolinNote, 300);
-				return;
-			}
-			const dur = .55 + Math.random() * .4;
-			const freq = note(mn) + (Math.random() - .5) * 1.5;
-			const now = audioCtx.currentTime;
-			const osc = audioCtx.createOscillator(), vib = audioCtx.createOscillator();
-			const vibGn = audioCtx.createGain(), filter = audioCtx.createBiquadFilter(), gainN = audioCtx.createGain();
-			osc.type = "sawtooth";
-			osc.frequency.value = freq;
-			vib.type = "sine";
-			vib.frequency.value = 5.5;
-			vibGn.gain.value = 4;
-			vib.connect(vibGn);
-			vibGn.connect(osc.frequency);
-			filter.type = "bandpass";
-			filter.frequency.value = freq * 2;
-			filter.Q.value = 2.5;
-			gainN.gain.setValueAtTime(0, now);
-			gainN.gain.linearRampToValueAtTime(.22, now + .08);
-			gainN.gain.setTargetAtTime(0, now + dur * .7, dur * .15);
-			osc.connect(filter);
-			filter.connect(gainN);
-			gainN.connect(rev);
-			osc.start(now);
-			osc.stop(now + dur + .2);
-			vib.start(now);
-			vib.stop(now + dur + .2);
-			setTimeout(playViolinNote, (dur + .05 + Math.random() * .2) * 1e3);
-		}
-		setTimeout(playViolinNote, 800);
-		const OCARINA_MOTIFS = [
-			[
-				67,
-				null,
-				null,
-				65,
-				null,
-				63,
-				null,
-				null,
-				62,
-				null,
-				60
-			],
-			[
-				60,
-				null,
-				63,
-				null,
-				60,
-				null,
-				58,
-				null,
-				60
-			],
-			[
-				72,
-				null,
-				null,
-				70,
-				68,
-				null,
-				65,
-				null,
-				null
-			],
-			[
-				63,
-				65,
-				null,
-				68,
-				null,
-				65,
-				63,
-				null,
-				null,
-				60,
-				null
-			]
-		];
-		let omIdx = 0, onIdx = 0;
-		let oMotif = OCARINA_MOTIFS[0];
-		function playOcarinaNote() {
-			if (!audioCtx || !musicStarted) return;
-			const mn = oMotif[onIdx++];
-			if (onIdx >= oMotif.length) {
-				onIdx = 0;
-				omIdx = (omIdx + 1) % OCARINA_MOTIFS.length;
-				oMotif = OCARINA_MOTIFS[omIdx];
-			}
-			const dur = .45 + Math.random() * .35;
-			if (mn !== null) {
-				const freq = note(mn) * (.995 + Math.random() * .012);
-				const now = audioCtx.currentTime;
-				const osc1 = audioCtx.createOscillator(), osc2 = audioCtx.createOscillator();
-				const g = audioCtx.createGain(), gMix = audioCtx.createGain();
-				osc1.type = "sine";
-				osc1.frequency.value = freq;
-				osc2.type = "sine";
-				osc2.frequency.value = freq * 2.01;
-				gMix.gain.value = .18;
-				g.gain.setValueAtTime(0, now);
-				g.gain.linearRampToValueAtTime(.28, now + .06);
-				g.gain.setTargetAtTime(0, now + dur * .65, dur * .12);
-				osc1.connect(g);
-				osc2.connect(gMix);
-				gMix.connect(g);
-				g.connect(rev);
-				g.connect(musicMasterGain);
-				osc1.start(now);
-				osc1.stop(now + dur + .15);
-				osc2.start(now);
-				osc2.stop(now + dur + .15);
-			}
-			setTimeout(playOcarinaNote, (dur + .12 + Math.random() * .3) * 1e3);
-		}
-		setTimeout(playOcarinaNote, 2200);
-		function pizzicato() {
-			if (!audioCtx || !musicStarted) return;
-			const pizzNotes = [
-				36,
-				38,
-				41,
-				43,
-				46
-			];
-			const n = pizzNotes[Math.floor(Math.random() * pizzNotes.length)];
-			const now = audioCtx.currentTime;
-			const osc = audioCtx.createOscillator(), gain = audioCtx.createGain();
-			osc.type = "triangle";
-			osc.frequency.value = note(n);
-			gain.gain.setValueAtTime(.18, now);
-			gain.gain.exponentialRampToValueAtTime(.001, now + 1.2);
-			osc.connect(gain);
-			gain.connect(rev);
-			osc.start(now);
-			osc.stop(now + 1.5);
-			setTimeout(pizzicato, 1800 + Math.random() * 3500);
-		}
-		setTimeout(pizzicato, 1200);
-	}
-	function playDeerYell(type) {
-		if (!audioCtx) return;
-		const now = audioCtx.currentTime;
-		if (type === "chase") {
-			const osc = audioCtx.createOscillator(), osc2 = audioCtx.createOscillator();
-			const dist = audioCtx.createWaveShaper(), gain = audioCtx.createGain();
-			const curve = new Float32Array(256);
-			for (let i = 0; i < 256; i++) {
-				const x = i * 2 / 255 - 1;
-				curve[i] = x < 0 ? -Math.pow(-x, .7) : Math.pow(x, .7) * 1.4;
-			}
-			dist.curve = curve;
-			osc.type = "sawtooth";
-			osc.frequency.setValueAtTime(280 + Math.random() * 60, now);
-			osc.frequency.linearRampToValueAtTime(80, now + .7);
-			osc2.type = "square";
-			osc2.frequency.value = 37;
-			gain.gain.setValueAtTime(.5, now);
-			gain.gain.exponentialRampToValueAtTime(.001, now + .9);
-			osc.connect(dist);
-			dist.connect(gain);
-			osc2.connect(gain);
-			gain.connect(sfxMasterGain);
-			osc.start(now);
-			osc.stop(now + 1);
-			osc2.start(now);
-			osc2.stop(now + 1);
-			setTimeout(() => {
-				if (!audioCtx) return;
-				const n2 = audioCtx.currentTime;
-				const s = audioCtx.createOscillator(), g = audioCtx.createGain();
-				s.type = "sawtooth";
-				s.frequency.setValueAtTime(520 + Math.random() * 80, n2);
-				s.frequency.exponentialRampToValueAtTime(190, n2 + .35);
-				g.gain.setValueAtTime(.3, n2);
-				g.gain.exponentialRampToValueAtTime(.001, n2 + .45);
-				s.connect(g);
-				g.connect(sfxMasterGain);
-				s.start(n2);
-				s.stop(n2 + .5);
-			}, 200 + Math.random() * 100);
-		} else {
-			const osc = audioCtx.createOscillator(), gain = audioCtx.createGain();
-			const rev2 = makeReverb(audioCtx, 2, 2.5);
-			rev2.connect(sfxMasterGain);
-			osc.type = "sine";
-			const baseFreq = 200 + Math.random() * 80;
-			osc.frequency.setValueAtTime(baseFreq, now);
-			osc.frequency.linearRampToValueAtTime(baseFreq * 1.3, now + .3);
-			osc.frequency.linearRampToValueAtTime(baseFreq * .7, now + .9);
-			osc.frequency.linearRampToValueAtTime(baseFreq * 1.1, now + 1.4);
-			gain.gain.setValueAtTime(0, now);
-			gain.gain.linearRampToValueAtTime(.4, now + .1);
-			gain.gain.setTargetAtTime(0, now + 1, .3);
-			osc.connect(gain);
-			gain.connect(rev2);
-			osc.start(now);
-			osc.stop(now + 2);
-		}
-	}
-	function playDeerAttackRoar() {
-		if (!audioCtx) return;
-		playDeerYell("chase");
-		const now = audioCtx.currentTime;
-		const buf = audioCtx.createBuffer(1, audioCtx.sampleRate * .15, audioCtx.sampleRate);
-		const d = buf.getChannelData(0);
-		for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / d.length, 3) * .9;
-		const src = audioCtx.createBufferSource(), filt = audioCtx.createBiquadFilter(), g = audioCtx.createGain();
-		src.buffer = buf;
-		filt.type = "lowpass";
-		filt.frequency.value = 180;
-		g.gain.value = 1.2;
-		src.connect(filt);
-		filt.connect(g);
-		g.connect(sfxMasterGain);
-		src.start(now);
-	}
-	function schedulePlayerSounds() {
-		const delay = (8 + Math.random() * 12) * 1e3;
-		setTimeout(() => {
-			if (!gameState.gameOver && !gameState.gameWon && audioCtx) {
-				const r = Math.random();
-				if (r < .33) playBurp();
-				else if (r < .66) playWhistle();
-				else playFart();
-			}
-			schedulePlayerSounds();
-		}, delay);
-	}
-	function playBurp() {
-		if (!audioCtx) return;
-		const now = audioCtx.currentTime;
-		const bufLen = audioCtx.sampleRate * .45;
-		const buf = audioCtx.createBuffer(1, bufLen, audioCtx.sampleRate);
-		const d = buf.getChannelData(0);
-		for (let i = 0; i < bufLen; i++) {
-			const t = i / audioCtx.sampleRate;
-			const env = Math.pow(Math.sin(Math.PI * i / bufLen), .4);
-			d[i] = (Math.random() * 2 - 1) * .3 * env + Math.sin(2 * Math.PI * 90 * t * Math.pow(1 - t * .8, .5)) * .6 * env;
-		}
-		const src = audioCtx.createBufferSource(), filt = audioCtx.createBiquadFilter(), gain = audioCtx.createGain();
-		src.buffer = buf;
-		filt.type = "bandpass";
-		filt.frequency.value = 220;
-		filt.Q.value = 1.8;
-		gain.gain.value = .7;
-		src.connect(filt);
-		filt.connect(gain);
-		gain.connect(sfxMasterGain);
-		src.start(now);
-		showFloatingText("💨 *burp*");
-	}
-	function playWhistle() {
-		if (!audioCtx) return;
-		const now = audioCtx.currentTime;
-		const tunes = [
-			[72, 74],
-			[74, 72],
-			[76, 74],
-			[69, 71]
-		];
-		tunes[Math.floor(Math.random() * tunes.length)].forEach((mn, idx) => {
-			const t = now + idx * .28;
-			const freq = note(mn) + (Math.random() - .5) * 3;
-			const osc = audioCtx.createOscillator(), noise_osc = audioCtx.createOscillator();
-			const gain = audioCtx.createGain(), nGain = audioCtx.createGain();
-			osc.type = "sine";
-			osc.frequency.value = freq;
-			noise_osc.type = "sawtooth";
-			noise_osc.frequency.value = freq * 8;
-			nGain.gain.value = .02;
-			gain.gain.setValueAtTime(0, t);
-			gain.gain.linearRampToValueAtTime(.55, t + .04);
-			gain.gain.setTargetAtTime(0, t + .18, .05);
-			osc.connect(gain);
-			noise_osc.connect(nGain);
-			nGain.connect(gain);
-			gain.connect(sfxMasterGain);
-			osc.start(t);
-			osc.stop(t + .35);
-			noise_osc.start(t);
-			noise_osc.stop(t + .35);
-		});
-		showFloatingText("🎵 *whistle*");
-	}
-	function playFart() {
-		if (!audioCtx) return;
-		const now = audioCtx.currentTime;
-		const dur = .3 + Math.random() * .4;
-		const bufLen = Math.floor(audioCtx.sampleRate * dur);
-		const buf = audioCtx.createBuffer(1, bufLen, audioCtx.sampleRate);
-		const d = buf.getChannelData(0);
-		const baseFreq = 60 + Math.random() * 40, flutterRate = 18 + Math.random() * 12;
-		for (let i = 0; i < bufLen; i++) {
-			const t = i / audioCtx.sampleRate;
-			const env = Math.pow(Math.sin(Math.PI * i / bufLen), .5) * (1 - t / dur * .3);
-			const flutter = .5 + .5 * Math.sin(2 * Math.PI * flutterRate * t);
-			d[i] = (Math.random() * 2 - 1) * .4 * flutter * env + Math.sin(2 * Math.PI * baseFreq * (1 + t * .3) * t) * .6 * flutter * env;
-		}
-		const src = audioCtx.createBufferSource(), filt = audioCtx.createBiquadFilter(), gain = audioCtx.createGain();
-		src.buffer = buf;
-		filt.type = "lowpass";
-		filt.frequency.value = 400;
-		gain.gain.value = .65;
-		src.connect(filt);
-		filt.connect(gain);
-		gain.connect(sfxMasterGain);
-		src.start(now);
-		showFloatingText("💨 *pfffft*");
-	}
-	function playSfxChop() {
-		if (!audioCtx) return;
-		const now = audioCtx.currentTime;
-		const buf = audioCtx.createBuffer(1, audioCtx.sampleRate * .12, audioCtx.sampleRate);
-		const d = buf.getChannelData(0);
-		for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / d.length, 1.5);
-		const src = audioCtx.createBufferSource(), filt = audioCtx.createBiquadFilter(), g = audioCtx.createGain();
-		src.buffer = buf;
-		filt.type = "bandpass";
-		filt.frequency.value = 800;
-		filt.Q.value = .8;
-		g.gain.value = .4;
-		src.connect(filt);
-		filt.connect(g);
-		g.connect(sfxMasterGain);
-		src.start(now);
-	}
-	function playSfxSwing() {
-		if (!audioCtx) return;
-		const now = audioCtx.currentTime;
-		const osc = audioCtx.createOscillator(), gain = audioCtx.createGain();
-		osc.type = "sawtooth";
-		osc.frequency.setValueAtTime(900, now);
-		osc.frequency.exponentialRampToValueAtTime(200, now + .18);
-		gain.gain.setValueAtTime(.3, now);
-		gain.gain.exponentialRampToValueAtTime(.001, now + .2);
-		osc.connect(gain);
-		gain.connect(sfxMasterGain);
-		osc.start(now);
-		osc.stop(now + .25);
-	}
-	function playSfxCraft() {
-		if (!audioCtx) return;
-		const now = audioCtx.currentTime;
-		[
-			0,
-			.1,
-			.2
-		].forEach((delay, i) => {
-			const osc = audioCtx.createOscillator(), g = audioCtx.createGain();
-			osc.type = "sine";
-			osc.frequency.value = note(60 + i * 4);
-			g.gain.setValueAtTime(.25, now + delay);
-			g.gain.exponentialRampToValueAtTime(.001, now + delay + .18);
-			osc.connect(g);
-			g.connect(sfxMasterGain);
-			osc.start(now + delay);
-			osc.stop(now + delay + .2);
-		});
-	}
-	function sfxChop() {
-		if (audioCtx) playSfxChop();
-	}
-	function sfxSwing() {
-		if (audioCtx) playSfxSwing();
-	}
-	function sfxCraft() {
-		if (audioCtx) playSfxCraft();
-	}
-	function sfxDeerRoar() {
-		if (audioCtx) playDeerAttackRoar();
-	}
-	function startDeerYells() {
-		if (deerYellInterval) return;
-		deerYellInterval = setInterval(() => {
-			if (!gameState.gameOver && !gameState.gameWon && gameState.deerAlive && audioCtx) {
-				if (gameState.deerState === "chase") playDeerYell("chase");
-				else if (Math.random() < .4) playDeerYell("wander");
-			}
-		}, 4e3 + Math.random() * 5e3);
-	}
-	//#endregion
 	//#region src/deer.ts
 	const deerGroup = new THREE.Group();
 	scene.add(deerGroup);
@@ -1611,6 +1834,7 @@
 		wanderTarget: new THREE.Vector3(),
 		wanderTimer: 0,
 		legPhase: 0,
+		lastStepPhase: 0,
 		attackTimer: 0,
 		alive: true
 	};
@@ -1677,6 +1901,8 @@
 		else deer.state = "wander";
 		gameState.deerState = deer.state;
 		gameState.deerAlive = deer.alive;
+		gameState.deerPos.x = deer.pos.x;
+		gameState.deerPos.z = deer.pos.z;
 		let mx = 0, mz = 0;
 		if (deer.state === "chase") {
 			const len = d || 1;
@@ -1689,7 +1915,7 @@
 				if (player.invincTimer <= 0) {
 					gameState.playerHP -= 12;
 					player.invincTimer = .5;
-					sfxDeerRoar();
+					sfxDeerRoar(deer.pos);
 					flashColor("rgba(255,0,0,0.4)");
 					if (gameState.playerHP <= 0) {
 						gameState.playerHP = 0;
@@ -1719,6 +1945,11 @@
 			deer.pos.z = nz;
 		} else deer.wanderTimer = 0;
 		deer.legPhase += dt * 4;
+		if (Math.abs(mx) > .01 || Math.abs(mz) > .01) {
+			const stepFreq = Math.PI;
+			if (Math.floor(deer.legPhase / stepFreq) !== Math.floor(deer.lastStepPhase / stepFreq)) sfxDeerStep(deer.pos);
+		}
+		deer.lastStepPhase = deer.legPhase;
 		deerGroup.position.set(deer.pos.x, Math.abs(Math.sin(deer.legPhase * .5)) * .05, deer.pos.z);
 		deerGroup.rotation.y = deer.facing;
 		deerGroup.rotation.z = Math.sin(deer.legPhase) * .15;
@@ -1844,6 +2075,8 @@
 				e.attackTimer = 2;
 				if (player.invincTimer <= 0) {
 					const isAlien = aliens.includes(e);
+					if (isAlien) sfxAlien(e.pos);
+					else sfxZombie(e.pos);
 					gameState.playerHP -= isAlien ? 15 : 10;
 					player.invincTimer = .4;
 					flashColor(isAlien ? "rgba(0,255,0,0.35)" : "rgba(200,140,0,0.4)");
@@ -1856,6 +2089,7 @@
 			if (gameState.inCar && dist2D(e.pos.x, e.pos.z, carPos.x, carPos.z) < 2.5) {
 				e.alive = false;
 				scene.remove(e.mesh);
+				sfxSquash(e.pos);
 				setActionHint("💥 Squashed!");
 			}
 			if (dist2D(e.pos.x, e.pos.z, 0, 0) > 210) {
@@ -1878,6 +2112,14 @@
 			camera.position.set(pivot.x + Math.sin(facing) * 7, 5, pivot.z + Math.cos(facing) * 7);
 			camera.lookAt(pivot.x, 1.2, pivot.z);
 		}
+		const fw = {
+			x: 0,
+			y: 0,
+			z: -1
+		};
+		fw.x = -Math.sin(facing);
+		fw.z = -Math.cos(facing);
+		updateAudioListener(camera.position.x, camera.position.y, camera.position.z, fw.x, 0, fw.z);
 	}
 	//#endregion
 	//#region src/workbench.ts
@@ -2073,7 +2315,7 @@
 		const fwdX = -Math.sin(player.facing), fwdZ = -Math.cos(player.facing);
 		if (gameState.hasSword && gameState.playerAttackTimer <= 0 && dist2D(px, pz, deer.pos.x, deer.pos.z) < 2.5) {
 			gameState.playerAttackTimer = .6;
-			sfxSwing();
+			sfxSwing(player.pos);
 			gameState.deerHP = Math.max(0, gameState.deerHP - 25);
 			setActionHint("⚔️ Hit! Deer HP: " + Math.ceil(gameState.deerHP));
 			if (gameState.deerHP <= 0) gameState.onWin?.();
@@ -2083,7 +2325,11 @@
 			if (!t.alive) continue;
 			if (dist2D(px, pz, t.x, t.z) < 2.8) {
 				t.hp--;
-				sfxChop();
+				sfxChop({
+					x: t.x,
+					y: 0,
+					z: t.z
+				});
 				setActionHint(`🪓 Chopping... (${t.hp} hits left)`);
 				if (t.hp <= 0) {
 					t.alive = false;
@@ -2100,7 +2346,11 @@
 			if (!m.alive) continue;
 			if (dist2D(px, pz, m.x, m.z) < 2.8) {
 				m.hp--;
-				sfxChop();
+				sfxChop({
+					x: m.x,
+					y: 0,
+					z: m.z
+				});
 				setActionHint(`⛏️ Mining... (${m.hp} hits left)`);
 				if (m.hp <= 0) {
 					m.alive = false;
@@ -2119,7 +2369,7 @@
 					gameState.resources.wood -= 3;
 					gameState.hasPickaxe = true;
 					gameState.stage = Math.max(gameState.stage, 2);
-					sfxCraft();
+					sfxCraft(wb);
 					setActionHint("⛏️ Pickaxe crafted!");
 					showMessage(`⛏️ <strong>Pickaxe crafted!</strong><br>Find grey rock formations (mines) deep in the forest.<br>Walk up close and press ${actionControlName()} to mine ore!`, 5e3);
 					updateHUD(deer, player);
@@ -2133,7 +2383,7 @@
 					gameState.hasSword = true;
 					addSwordToPlayer();
 					gameState.stage = 4;
-					sfxCraft();
+					sfxCraft(wb);
 					setActionHint("🗡️ Sword forged! Hunt the deer!");
 					showMessage(`🗡️ <strong>SWORD FORGED!</strong><br>Hunt down the deer and press ${actionControlName()} when close to attack it!`, 5e3);
 					updateHUD(deer, player);
@@ -2146,8 +2396,14 @@
 		if (!gameState.built.workbench && isInSafeZone(px, pz)) {
 			if (gameState.resources.wood >= 5) {
 				gameState.resources.wood -= 5;
-				placeWorkbench(px + fwdX * 1.5, pz + fwdZ * 1.5);
+				const wbX = px + fwdX * 1.5, wbZ = pz + fwdZ * 1.5;
+				placeWorkbench(wbX, wbZ);
 				gameState.stage = Math.max(gameState.stage, 1);
+				sfxCraft({
+					x: wbX,
+					y: 0,
+					z: wbZ
+				});
 				setActionHint(`🔨 Workbench placed! Walk up and press ${actionControlName()}.`);
 				showMessage(`🔨 <strong>Workbench built!</strong><br>Walk up to it and press ${actionControlName()}.<br>First craft: Pickaxe (3 wood) → mine ore → Sword (3 ore + 2 wood)`, 5500);
 				updateHUD(deer, player);
