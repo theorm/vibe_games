@@ -5,6 +5,7 @@ import { makeGround, generateWorld } from './world.js';
 import { player, playerGroup, buildPlayer, updatePlayer } from './player.js';
 import { carPos, updateCar, initCarEnvMap } from './car.js';
 import { deer, deerGroup, buildDeer, updateDeer } from './deer.js';
+import { updateCage } from './cage.js';
 import { updateEnemies, spawnZombies, spawnAliens } from './enemies.js';
 import { updateCamera } from './camera.js';
 import { updateHUD, updateClock, updateCarHint, updateMinimap, showMessage, triggerWin, triggerDeath } from './ui.js';
@@ -40,7 +41,8 @@ showMessage(
   <b>Phone/Tablet: full-screen zones to move/steer, tap for action, VIEW button for car camera</b><br><br>
   <div id="touch-detect-line" style="font-size:12px;color:#9fd;">Touch detection: checking...</div>
   <button id="touch-manual-enable" class="touch-intro-btn">Enable Touch Controls</button><br><br>
-  Chop trees → build workbench → craft pickaxe<br>→ mine ore → forge sword → kill deer<br><br>
+  Chop trees → build workbench → craft pickaxe<br>→ mine ore + wood → craft cage → trap deer<br>
+  → load cage into car → launch rocket → release on another planet<br><br>
   🚗 Red car parked in the safe zone for emergencies<br>
   🧟 Zombies invade from the lab at dawn<br>
   👽 Aliens land randomly — car runs them over!<br><br>
@@ -97,6 +99,7 @@ function animate(now: number): void {
     updatePlayer(dt);
     updateCar(dt);
     updateDeer(dt);
+    updateCage();
     updateEnemies(dt);
     updateDayCycle(dt);
     updateCarHint(player.pos, carPos);

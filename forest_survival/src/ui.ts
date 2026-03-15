@@ -44,8 +44,8 @@ export function showFloatingText(txt: string): void {
 export function updateHUD(deer: { hp: number }, player: { pos: any }): void {
   document.getElementById('health-fill')!.style.width = Math.max(0, gameState.playerHP) + '%';
   document.getElementById('health-text')!.textContent = String(Math.ceil(Math.max(0, gameState.playerHP)));
-  document.getElementById('deer-fill')!.style.width   = gameState.deerHP + '%';
-  document.getElementById('deer-text')!.textContent   = String(Math.ceil(gameState.deerHP));
+  document.getElementById('deer-fill')!.style.width   = (gameState.deerCaptured ? 100 : gameState.deerHP) + '%';
+  document.getElementById('deer-text')!.textContent   = gameState.deerCaptured ? 'CAGED' : String(Math.ceil(gameState.deerHP));
   document.getElementById('resource-info')!.innerHTML = `\u{1FAB5} ${gameState.resources.wood} &nbsp; ⛰️ ${gameState.resources.ore}`;
 
   const inv = document.getElementById('inventory')!;
@@ -54,6 +54,9 @@ export function updateHUD(deer: { hp: number }, player: { pos: any }): void {
     { icon: '🪓', label: 'Axe',                         show: !gameState.hasSword },
     { icon: '⛏️', label: 'Pickaxe',                     show: gameState.hasPickaxe },
     { icon: '🗡️', label: 'Sword',                       show: gameState.hasSword },
+    { icon: '🪤', label: 'Cage',                        show: gameState.hasCage },
+    { icon: '🦌', label: 'Caged Deer',                  show: gameState.deerCaptured },
+    { icon: '🚀', label: 'Launch',                      show: gameState.rocketLaunched },
     { icon: '🪵', label: `Wood×${gameState.resources.wood}`, show: gameState.resources.wood > 0 },
     { icon: '⛰️', label: `Ore×${gameState.resources.ore}`,   show: gameState.resources.ore > 0 },
     { icon: '🚗', label: 'Car',                          show: true },
@@ -64,7 +67,7 @@ export function updateHUD(deer: { hp: number }, player: { pos: any }): void {
     inv.appendChild(d);
   });
 
-  ['obj0', 'obj1', 'obj2', 'obj3', 'obj4'].forEach((id, i) => {
+  ['obj0', 'obj1', 'obj2', 'obj3', 'obj4', 'obj5'].forEach((id, i) => {
     const el = document.getElementById(id)!;
     if (i < gameState.stage) el.className = 'done';
     else if (i === gameState.stage) el.className = 'active';
@@ -138,7 +141,7 @@ export function updateMinimap(playerPos: any, carPos: any, deerPos: any, deerAli
 export function triggerWin(): void {
   gameState.gameWon  = true;
   gameState.deerAlive = false;
-  showMessage(`🎉 <strong>VICTORY!</strong><br><br>You slew the vicious deer!<br>The forest is saved.<br><br><em style="font-size:13px">Reload to play again</em>`);
+  showMessage(`🎉 <strong>VICTORY!</strong><br><br>You relocated the deer to another planet.<br>The forest is safe, and the deer lives.<br><br><em style="font-size:13px">Reload to play again</em>`);
 }
 
 export function triggerDeath(by = 'deer'): void {

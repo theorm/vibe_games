@@ -201,3 +201,15 @@ Rocket site collision + rocket visual realism pass:
 - Replaced the old single-radius rocket-site collision with footprint-aware boundaries (pad rectangle, gantry tower, service arms, fuel tanks, rocket core, and booster colliders) for more accurate launch-site edge detection.
 - Added procedural high-visibility rocket hull textures (paint panels, seams, stage bands, decals, and micro-variation) so the rocket no longer renders as a flat dark/black surface.
 - Upgraded rocket/launch-site materials from basic Lambert shading to tuned PBR materials with normal/roughness detail and metal maps for improved readability and realism under the day/night lighting model.
+
+# v.20
+
+Deer relocation quest overhaul (non-lethal win path):
+
+- Replaced the old deer-kill victory condition with a new relocation chain: craft cage -> place bait trap -> capture deer -> load into car -> launch rocket -> unload on another planet.
+- Added dedicated cage/trap system module (`src/cage.ts`) with world meshes for trap/captured cage, car cargo cage visuals, and planet drop-off cage.
+- Extended shared game state with relocation flags: `hasCage`, `cagePlaced`, `deerCaptured`, `cageLoadedInCar`, `rocketLaunched`, and `onPlanet`.
+- Updated workbench crafting progression to create a cage (`6 wood + 3 ore`) instead of sword-for-win progression.
+- Added interaction logic for loading caged deer when the car is parked nearby, rocket launch gating, and a two-step final unload action to trigger victory.
+- Updated intro text, objective list, action hints, inventory indicators, and victory message to reflect the “save the forest by relocating the deer” story.
+- Minimap/HUD behavior now cleanly handles post-capture state by hiding live-deer tracking once the deer is caged.

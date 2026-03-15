@@ -52,6 +52,12 @@
 			ore: 0
 		},
 		built: { workbench: false },
+		hasCage: false,
+		cagePlaced: false,
+		deerCaptured: false,
+		cageLoadedInCar: false,
+		rocketLaunched: false,
+		onPlanet: false,
 		hasSword: false,
 		hasPickaxe: false,
 		stage: 0,
@@ -661,8 +667,8 @@
 	function updateHUD(deer, player) {
 		document.getElementById("health-fill").style.width = Math.max(0, gameState.playerHP) + "%";
 		document.getElementById("health-text").textContent = String(Math.ceil(Math.max(0, gameState.playerHP)));
-		document.getElementById("deer-fill").style.width = gameState.deerHP + "%";
-		document.getElementById("deer-text").textContent = String(Math.ceil(gameState.deerHP));
+		document.getElementById("deer-fill").style.width = (gameState.deerCaptured ? 100 : gameState.deerHP) + "%";
+		document.getElementById("deer-text").textContent = gameState.deerCaptured ? "CAGED" : String(Math.ceil(gameState.deerHP));
 		document.getElementById("resource-info").innerHTML = `\u{1FAB5} ${gameState.resources.wood} &nbsp; ⛰️ ${gameState.resources.ore}`;
 		const inv = document.getElementById("inventory");
 		inv.innerHTML = "";
@@ -681,6 +687,21 @@
 				icon: "🗡️",
 				label: "Sword",
 				show: gameState.hasSword
+			},
+			{
+				icon: "🪤",
+				label: "Cage",
+				show: gameState.hasCage
+			},
+			{
+				icon: "🦌",
+				label: "Caged Deer",
+				show: gameState.deerCaptured
+			},
+			{
+				icon: "🚀",
+				label: "Launch",
+				show: gameState.rocketLaunched
 			},
 			{
 				icon: "🪵",
@@ -709,7 +730,8 @@
 			"obj1",
 			"obj2",
 			"obj3",
-			"obj4"
+			"obj4",
+			"obj5"
 		].forEach((id, i) => {
 			const el = document.getElementById(id);
 			if (i < gameState.stage) el.className = "done";
@@ -831,7 +853,7 @@
 	function triggerWin() {
 		gameState.gameWon = true;
 		gameState.deerAlive = false;
-		showMessage(`🎉 <strong>VICTORY!</strong><br><br>You slew the vicious deer!<br>The forest is saved.<br><br><em style="font-size:13px">Reload to play again</em>`);
+		showMessage(`🎉 <strong>VICTORY!</strong><br><br>You relocated the deer to another planet.<br>The forest is safe, and the deer lives.<br><br><em style="font-size:13px">Reload to play again</em>`);
 	}
 	function triggerDeath(by = "deer") {
 		gameState.gameOver = true;
@@ -1595,22 +1617,6 @@
 		axeB.position.set(.62, 1.1, .15);
 		playerGroup.add(axeB);
 	}
-	function addSwordToPlayer() {
-		const toRemove = [];
-		playerGroup.children.forEach((c, i) => {
-			if (i >= 8) toRemove.push(c);
-		});
-		toRemove.forEach((c) => playerGroup.remove(c));
-		const blade = new THREE.Mesh(new THREE.BoxGeometry(.08, .7, .04), new THREE.MeshLambertMaterial({ color: 14540287 }));
-		blade.position.set(.55, 1.05, .1);
-		playerGroup.add(blade);
-		const guard = new THREE.Mesh(new THREE.BoxGeometry(.28, .06, .06), new THREE.MeshLambertMaterial({ color: 13934615 }));
-		guard.position.set(.55, .72, .1);
-		playerGroup.add(guard);
-		const grip = new THREE.Mesh(new THREE.BoxGeometry(.07, .28, .07), new THREE.MeshLambertMaterial({ color: 5910544 }));
-		grip.position.set(.55, .56, .1);
-		playerGroup.add(grip);
-	}
 	function updatePlayer(dt) {
 		if (gameState.gameOver || gameState.gameWon || gameState.inCar) return;
 		if (keys["ArrowLeft"]) player.facing += 1.8 * dt;
@@ -2338,6 +2344,141 @@
 		});
 	}
 	//#endregion
+	//#region src/cage.ts
+	const CAGE_CAPTURE_R = 1.7;
+	let trapGroup = null;
+	let trapPos = null;
+	let planetDropGroup = null;
+	const carCargoGroup = new THREE.Group();
+	carCargoGroup.visible = false;
+	scene.add(carCargoGroup);
+	function makeCageMesh(hasDeerInside) {
+		const g = new THREE.Group();
+		const barMat = new THREE.MeshStandardMaterial({
+			color: 10134705,
+			metalness: .7,
+			roughness: .35
+		});
+		const baseMat = new THREE.MeshStandardMaterial({
+			color: 4009246,
+			metalness: .2,
+			roughness: .8
+		});
+		const base = new THREE.Mesh(new THREE.BoxGeometry(1.5, .12, 1.5), baseMat);
+		base.position.y = .06;
+		base.castShadow = true;
+		g.add(base);
+		const h = 1.3;
+		for (const x of [
+			-.65,
+			-.32,
+			0,
+			.32,
+			.65
+		]) for (const z of [-.65, .65]) {
+			const bar = new THREE.Mesh(new THREE.CylinderGeometry(.03, .03, h, 8), barMat);
+			bar.position.set(x, h * .5 + .12, z);
+			bar.castShadow = true;
+			g.add(bar);
+		}
+		for (const z of [
+			-.65,
+			-.32,
+			0,
+			.32,
+			.65
+		]) for (const x of [-.65, .65]) {
+			const bar = new THREE.Mesh(new THREE.CylinderGeometry(.03, .03, h, 8), barMat);
+			bar.position.set(x, h * .5 + .12, z);
+			bar.castShadow = true;
+			g.add(bar);
+		}
+		const top = new THREE.Mesh(new THREE.BoxGeometry(1.5, .08, 1.5), barMat);
+		top.position.y = h + .16;
+		top.castShadow = true;
+		g.add(top);
+		if (hasDeerInside) {
+			const deerMass = new THREE.Mesh(new THREE.BoxGeometry(.8, .45, .42), new THREE.MeshStandardMaterial({
+				color: 7356959,
+				roughness: .9
+			}));
+			deerMass.position.set(0, .35, 0);
+			deerMass.castShadow = true;
+			g.add(deerMass);
+		} else {
+			const bait = new THREE.Mesh(new THREE.ConeGeometry(.18, .28, 8), new THREE.MeshStandardMaterial({
+				color: 16763989,
+				roughness: .65
+			}));
+			bait.position.set(0, .22, 0);
+			bait.rotation.x = Math.PI;
+			g.add(bait);
+		}
+		return g;
+	}
+	function rebuildTrapVisual(hasDeerInside) {
+		if (!trapGroup) return;
+		trapGroup.clear();
+		const mesh = makeCageMesh(hasDeerInside);
+		trapGroup.add(mesh);
+	}
+	function placeCageTrap(x, z) {
+		if (!gameState.hasCage || gameState.cagePlaced || gameState.deerCaptured) return false;
+		if (!trapGroup) {
+			trapGroup = new THREE.Group();
+			scene.add(trapGroup);
+		}
+		trapPos = new THREE.Vector3(x, 0, z);
+		trapGroup.position.set(x, 0, z);
+		rebuildTrapVisual(false);
+		gameState.cagePlaced = true;
+		return true;
+	}
+	function getCageWorldPos() {
+		if (!trapPos || !gameState.deerCaptured || gameState.cageLoadedInCar) return null;
+		return trapPos;
+	}
+	function loadCageIntoCar() {
+		if (!gameState.deerCaptured || gameState.cageLoadedInCar) return false;
+		gameState.cageLoadedInCar = true;
+		gameState.cagePlaced = false;
+		if (trapGroup) trapGroup.visible = false;
+		carCargoGroup.clear();
+		carCargoGroup.add(makeCageMesh(true));
+		carCargoGroup.visible = true;
+		return true;
+	}
+	function launchToPlanet() {
+		gameState.rocketLaunched = true;
+		gameState.onPlanet = true;
+		carCargoGroup.visible = false;
+		showMessage("🚀 <strong>LAUNCH!</strong><br><br>You blasted off with the caged deer.<br>You have landed on a distant planet.<br><br>Bring the cage out of the rocket.", 5200);
+	}
+	function unloadCageOnPlanet(x, z) {
+		if (planetDropGroup) scene.remove(planetDropGroup);
+		planetDropGroup = makeCageMesh(true);
+		planetDropGroup.position.set(x, 0, z);
+		scene.add(planetDropGroup);
+		gameState.cageLoadedInCar = false;
+		carCargoGroup.visible = false;
+	}
+	function updateCage() {
+		if (gameState.cageLoadedInCar) {
+			carCargoGroup.position.set(carPos.x, .45, carPos.z);
+			carCargoGroup.rotation.y = gameState.carFacing;
+		}
+		if (!gameState.cagePlaced || gameState.deerCaptured || !trapPos || !deer.alive) return;
+		if (dist2D(deer.pos.x, deer.pos.z, trapPos.x, trapPos.z) > CAGE_CAPTURE_R) return;
+		gameState.deerCaptured = true;
+		gameState.cagePlaced = true;
+		deer.alive = false;
+		deerGroup.visible = false;
+		gameState.deerAlive = false;
+		gameState.stage = Math.max(gameState.stage, 5);
+		rebuildTrapVisual(true);
+		showMessage("🦌 <strong>DEER CAPTURED!</strong><br>The bait trap worked. Bring the car next to the cage and load it.", 4200);
+	}
+	//#endregion
 	//#region src/enemies.ts
 	function spawnAliens() {
 		showEventBanner("👽 ALIENS LANDING!", 5e3, "#0f0");
@@ -2676,7 +2817,44 @@
 	}
 	function handleAction() {
 		if (gameState.gameOver || gameState.gameWon) return;
-		const nearCar = dist2D(player.pos.x, player.pos.z, carPos.x, carPos.z) < 3;
+		const px = player.pos.x, pz = player.pos.z;
+		const fwdX = -Math.sin(player.facing), fwdZ = -Math.cos(player.facing);
+		const nearCar = dist2D(px, pz, carPos.x, carPos.z) < 3;
+		const nearRocket = dist2D(px, pz, gameState.rocketPos.x, gameState.rocketPos.z) < gameState.rocketRadius + 3;
+		if (gameState.onPlanet && gameState.rocketLaunched && gameState.cageLoadedInCar && nearRocket) {
+			unloadCageOnPlanet(gameState.rocketPos.x + 2.2, gameState.rocketPos.z + 1.2);
+			gameState.stage = Math.max(gameState.stage, 6);
+			gameState.onWin?.();
+			return;
+		}
+		if (!gameState.rocketLaunched && gameState.cageLoadedInCar && nearRocket) {
+			launchToPlanet();
+			gameState.inCar = false;
+			gameState.driverView = false;
+			playerGroup.visible = true;
+			player.pos.set(gameState.rocketPos.x + 4, 0, gameState.rocketPos.z + 1.2);
+			gameState.stage = Math.max(gameState.stage, 5);
+			return;
+		}
+		const cagePos = getCageWorldPos();
+		if (cagePos && !gameState.cageLoadedInCar && dist2D(px, pz, cagePos.x, cagePos.z) < 2.8) {
+			if (dist2D(carPos.x, carPos.z, cagePos.x, cagePos.z) < 4.3) {
+				if (loadCageIntoCar()) {
+					setActionHint("📦 Caged deer loaded into car! Drive it to the rocket.");
+					showMessage("📦 <strong>CAGED DEER LOADED</strong><br>Drive to the rocket site, then launch to a new planet.", 4200);
+					gameState.stage = Math.max(gameState.stage, 5);
+				}
+			} else setActionHint("🚗 Bring the car closer to load the caged deer.");
+			return;
+		}
+		if (gameState.hasCage && !gameState.cagePlaced && !gameState.deerCaptured) {
+			if (placeCageTrap(px + fwdX * 2, pz + fwdZ * 2)) {
+				setActionHint("🪤 Bait cage placed. Lure the deer inside.");
+				showMessage("🪤 <strong>BAIT CAGE PLACED</strong><br>Stay nearby and bait the deer into the trap.", 3500);
+				gameState.stage = Math.max(gameState.stage, 4);
+			}
+			return;
+		}
 		if (!gameState.inCar && nearCar) {
 			gameState.inCar = true;
 			playerGroup.visible = false;
@@ -2691,14 +2869,11 @@
 			setActionHint("Exited car.");
 			return;
 		}
-		const px = player.pos.x, pz = player.pos.z;
-		const fwdX = -Math.sin(player.facing), fwdZ = -Math.cos(player.facing);
 		if (gameState.hasSword && gameState.playerAttackTimer <= 0 && dist2D(px, pz, deer.pos.x, deer.pos.z) < 2.5) {
 			gameState.playerAttackTimer = .6;
 			sfxSwing(player.pos);
-			gameState.deerHP = Math.max(0, gameState.deerHP - 25);
-			setActionHint("⚔️ Hit! Deer HP: " + Math.ceil(gameState.deerHP));
-			if (gameState.deerHP <= 0) gameState.onWin?.();
+			gameState.deerHP = Math.max(1, gameState.deerHP - 25);
+			setActionHint(gameState.deerHP <= 1 ? "🪤 The deer must be relocated alive. Build and use a cage trap." : "⚔️ Hit! Deer HP: " + Math.ceil(gameState.deerHP));
 			return;
 		}
 		for (const t of trees) {
@@ -2756,18 +2931,17 @@
 				} else setActionHint(`Need 3 wood for pickaxe — have ${gameState.resources.wood}`);
 				return;
 			}
-			if (!gameState.hasSword) {
-				if (gameState.resources.ore >= 3 && gameState.resources.wood >= 2) {
+			if (!gameState.hasCage) {
+				if (gameState.resources.ore >= 3 && gameState.resources.wood >= 6) {
 					gameState.resources.ore -= 3;
-					gameState.resources.wood -= 2;
-					gameState.hasSword = true;
-					addSwordToPlayer();
-					gameState.stage = 4;
+					gameState.resources.wood -= 6;
+					gameState.hasCage = true;
+					gameState.stage = Math.max(gameState.stage, 4);
 					sfxCraft(wb);
-					setActionHint("🗡️ Sword forged! Hunt the deer!");
-					showMessage(`🗡️ <strong>SWORD FORGED!</strong><br>Hunt down the deer and press ${actionControlName()} when close to attack it!`, 5e3);
+					setActionHint("🪤 Cage crafted! Place bait trap for the deer.");
+					showMessage(`🪤 <strong>CAGE CRAFTED!</strong><br>Press ${actionControlName()} on open ground to place a bait trap.<br>Capture the deer alive and relocate it.`, 5e3);
 					updateHUD(deer, player);
-				} else setActionHint(`Sword needs 3 ore + 2 wood — have ore:${gameState.resources.ore} wood:${gameState.resources.wood}`);
+				} else setActionHint(`Cage needs 3 ore + 6 wood — have ore:${gameState.resources.ore} wood:${gameState.resources.wood}`);
 				return;
 			}
 			setActionHint("Nothing left to craft.");
@@ -2778,14 +2952,14 @@
 				gameState.resources.wood -= 5;
 				const wbX = px + fwdX * 1.5, wbZ = pz + fwdZ * 1.5;
 				placeWorkbench(wbX, wbZ);
-				gameState.stage = Math.max(gameState.stage, 1);
+				gameState.stage = Math.max(gameState.stage, 2);
 				sfxCraft({
 					x: wbX,
 					y: 0,
 					z: wbZ
 				});
 				setActionHint(`🔨 Workbench placed! Walk up and press ${actionControlName()}.`);
-				showMessage(`🔨 <strong>Workbench built!</strong><br>Walk up to it and press ${actionControlName()}.<br>First craft: Pickaxe (3 wood) → mine ore → Sword (3 ore + 2 wood)`, 5500);
+				showMessage(`🔨 <strong>Workbench built!</strong><br>Walk up and press ${actionControlName()}.<br>Craft Pickaxe (3 wood), mine ore, then craft Cage (6 wood + 3 ore).`, 5500);
 				updateHUD(deer, player);
 			} else setActionHint(`Need 5 wood — have ${gameState.resources.wood}`);
 			return;
@@ -2793,13 +2967,13 @@
 		setActionHint("Nothing to do here.");
 	}
 	function checkProgress() {
-		if (gameState.resources.wood >= 5 && gameState.stage === 0) {
+		if (gameState.resources.wood >= 5 && gameState.stage === 0 && !gameState.built.workbench) {
 			gameState.stage = 1;
 			showMessage(`🪵 <strong>Enough wood!</strong><br>Go to the safe zone (green circle in center).<br>Press ${actionControlName()} to build a Workbench!`, 5e3);
 		}
-		if (gameState.resources.ore >= 3 && gameState.hasPickaxe && !gameState.hasSword && gameState.stage < 3) {
+		if (gameState.hasPickaxe && !gameState.hasCage && gameState.resources.ore >= 3 && gameState.resources.wood >= 6 && gameState.stage < 3) {
 			gameState.stage = 3;
-			showMessage(`⛰️ <strong>Enough ore!</strong><br>Return to the Workbench and press ${actionControlName()} to forge the Sword!`, 5e3);
+			showMessage(`⛰️ <strong>Cage materials ready!</strong><br>Return to the Workbench and press ${actionControlName()} to craft the cage.`, 5e3);
 		}
 		updateHUD(deer, player);
 	}
@@ -2888,7 +3062,8 @@
   <b>Phone/Tablet: full-screen zones to move/steer, tap for action, VIEW button for car camera</b><br><br>
   <div id="touch-detect-line" style="font-size:12px;color:#9fd;">Touch detection: checking...</div>
   <button id="touch-manual-enable" class="touch-intro-btn">Enable Touch Controls</button><br><br>
-  Chop trees → build workbench → craft pickaxe<br>→ mine ore → forge sword → kill deer<br><br>
+  Chop trees → build workbench → craft pickaxe<br>→ mine ore + wood → craft cage → trap deer<br>
+  → load cage into car → launch rocket → release on another planet<br><br>
   🚗 Red car parked in the safe zone for emergencies<br>
   🧟 Zombies invade from the lab at dawn<br>
   👽 Aliens land randomly — car runs them over!<br><br>
@@ -2930,6 +3105,7 @@
 			updatePlayer(dt);
 			updateCar(dt);
 			updateDeer(dt);
+			updateCage();
 			updateEnemies(dt);
 			updateDayCycle(dt);
 			updateCarHint(player.pos, carPos);
