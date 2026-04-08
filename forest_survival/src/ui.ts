@@ -56,6 +56,7 @@ export function updateHUD(deer: { hp: number }, player: { pos: any }): void {
     { icon: '🗡️', label: 'Sword',                       show: gameState.hasSword },
     { icon: '🪤', label: 'Cage',                        show: gameState.hasCage },
     { icon: '🦌', label: 'Caged Deer',                  show: gameState.deerCaptured },
+    { icon: '📦', label: 'Rocket Cargo',                show: gameState.cageLoadedInRocket },
     { icon: '🚀', label: 'Launch',                      show: gameState.rocketLaunched },
     { icon: '🪵', label: `Wood×${gameState.resources.wood}`, show: gameState.resources.wood > 0 },
     { icon: '⛰️', label: `Ore×${gameState.resources.ore}`,   show: gameState.resources.ore > 0 },
@@ -76,6 +77,21 @@ export function updateHUD(deer: { hp: number }, player: { pos: any }): void {
 }
 
 export function updateClock(renderer: any, scene: any, sun: any, ambient: any, moonLight: any): void {
+  if (gameState.inRocket) {
+    document.getElementById('clock')!.textContent = '🚀 Transit';
+    sun.intensity = 0.15;
+    ambient.intensity = 0.25;
+    moonLight.intensity = 0.6;
+    return;
+  }
+  if (gameState.onPlanet) {
+    document.getElementById('clock')!.textContent = '🪐 Exoplanet';
+    sun.intensity = 0.85;
+    ambient.intensity = 0.42;
+    moonLight.intensity = 0;
+    return;
+  }
+
   const t = gameState.dayTime;
   const names = ['🌙 Night', '🌅 Dawn', '🌄 Morning', '☀️ Noon', '🌇 Dusk', '🌆 Evening', '🌙 Night'];
   const idx = Math.min(Math.floor(((t + 1 / 14) % 1) * 7), 6);
@@ -98,6 +114,10 @@ export function updateClock(renderer: any, scene: any, sun: any, ambient: any, m
 
 export function updateCarHint(playerPos: any, carPos: any): void {
   const ch = document.getElementById('car-hint')!;
+  if (gameState.inRocket || gameState.onPlanet) {
+    ch.style.display = 'none';
+    return;
+  }
   const nearCar = Math.sqrt(
     (playerPos.x - carPos.x) ** 2 + (playerPos.z - carPos.z) ** 2
   ) < 3;
@@ -119,6 +139,52 @@ export function updateMinimap(playerPos: any, carPos: any, deerPos: any, deerAli
   const S = 110, scale = S / (FOREST_R * 2 + 24), cx = S / 2, cy = S / 2;
 
   ctx.clearRect(0, 0, S, S);
+  if (gameState.inRocket) {
+    ctx.fillStyle = '#060a15';
+    ctx.fillRect(0, 0, S, S);
+    ctx.fillStyle = '#9dd5ff';
+    for (let i = 0; i < 32; i++) {
+      const x = (i * 37) % S;
+      const y = (i * 59) % S;
+      ctx.fillRect(x, y, 1.2, 1.2);
+    }
+
+    const dx = gameState.rocketFlightDest.x - gameState.rocketFlightPos.x;
+    const dz = gameState.rocketFlightDest.z - gameState.rocketFlightPos.z;
+    const navScale = 0.12;
+    const tx = Math.max(8, Math.min(S - 8, cx + dx * navScale));
+    const ty = Math.max(8, Math.min(S - 8, cy + dz * navScale));
+
+    // Destination marker
+    ctx.fillStyle = '#4ac0ff';
+    ctx.beginPath();
+    ctx.arc(tx, ty, 8, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Rocket marker (centered local radar frame)
+    ctx.fillStyle = '#ffef9c';
+    ctx.beginPath();
+    ctx.moveTo(cx, cy - 6);
+    ctx.lineTo(cx - 4.5, cy + 5);
+    ctx.lineTo(cx + 4.5, cy + 5);
+    ctx.closePath();
+    ctx.fill();
+
+    // Guide line from rocket to target
+    ctx.strokeStyle = 'rgba(120,220,255,0.7)';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.lineTo(tx, ty);
+    ctx.stroke();
+
+    ctx.fillStyle = '#fff';
+    ctx.font = '9px "Courier New", monospace';
+    ctx.fillText('YOU', cx - 9, cy + 14);
+    ctx.fillText('TARGET', Math.max(2, tx - 14), Math.max(10, ty - 10));
+    return;
+  }
+
   ctx.fillStyle = '#1a3a10'; ctx.fillRect(0, 0, S, S);
   ctx.beginPath(); ctx.arc(cx, cy, FOREST_R * scale, 0, Math.PI * 2); ctx.fillStyle = '#2d5a1b'; ctx.fill();
   ctx.beginPath(); ctx.arc(cx, cy, SAFE_R  * scale, 0, Math.PI * 2); ctx.fillStyle = '#4a8a3a'; ctx.fill();

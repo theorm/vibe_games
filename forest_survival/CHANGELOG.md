@@ -213,3 +213,23 @@ Deer relocation quest overhaul (non-lethal win path):
 - Added interaction logic for loading caged deer when the car is parked nearby, rocket launch gating, and a two-step final unload action to trigger victory.
 - Updated intro text, objective list, action hints, inventory indicators, and victory message to reflect the “save the forest by relocating the deer” story.
 - Minimap/HUD behavior now cleanly handles post-capture state by hiding live-deer tracking once the deer is caged.
+
+# v.21
+
+Flyable rocket transit + different planet world:
+
+- Launch flow now has an explicit cargo transfer step at the launch site: caged deer moves from car cargo into the rocket before launch.
+- Added real rocket piloting gameplay (`src/rocket.ts`): board rocket, steer with arrows, thrust through a space transit scene, and manually fly to a destination planet marker.
+- Added full in-flight camera mode and input/state integration (`inRocket`) so controls/camera switch to rocket flight behavior until arrival.
+- Added a distinct destination world (planet landing zone with unique terrain/rocks/atmosphere) and landed-rocket interactions there.
+- Final objective now requires arriving on the new planet and unloading the cage from the landed rocket to win.
+- Updated HUD/minimap/clock and objective messaging to communicate rocket transit and exoplanet phases clearly.
+
+# v.22
+
+Rocket navigation clarity pass:
+
+- Flight minimap now shows both markers clearly: player rocket (`YOU`) and destination planet (`TARGET`) with a guide line between them.
+- Replaced flickery random star placement in the minimap with stable starfield dots for better readability during flight.
+- Added live destination distance in the rocket action hint while piloting, so players can confirm they are closing in on the target.
+- Mirrored rocket flight position/destination into shared game state for UI rendering without extra coupling.

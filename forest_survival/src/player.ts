@@ -85,7 +85,7 @@ export function addSwordToPlayer(): void {
 }
 
 export function updatePlayer(dt: number): void {
-  if (gameState.gameOver || gameState.gameWon || gameState.inCar) return;
+  if (gameState.gameOver || gameState.gameWon || gameState.inCar || gameState.inRocket) return;
 
   if (keys['ArrowLeft'])  player.facing += 1.8 * dt;
   if (keys['ArrowRight']) player.facing -= 1.8 * dt;
@@ -95,7 +95,10 @@ export function updatePlayer(dt: number): void {
   if (keys['ArrowDown']) { mx =  Math.sin(player.facing) * PLAYER_SPD * 0.5; mz =  Math.cos(player.facing) * PLAYER_SPD * 0.5; }
 
   const nx = player.pos.x + mx * dt, nz = player.pos.z + mz * dt;
-  if (dist2D(nx, nz, 0, 0) < FOREST_R + 10) {
+  const inAllowedBounds = gameState.onPlanet
+    ? dist2D(nx, nz, gameState.planetPos.x, gameState.planetPos.z) < 40
+    : dist2D(nx, nz, 0, 0) < FOREST_R + 10;
+  if (inAllowedBounds) {
     if (!checkWorldCollision(nx, nz, 0.4)) {
       player.pos.x = nx; player.pos.z = nz;
     }

@@ -110,22 +110,13 @@ export function loadCageIntoCar(): boolean {
   return true;
 }
 
-export function launchToPlanet(): void {
-  gameState.rocketLaunched = true;
-  gameState.onPlanet = true;
-  carCargoGroup.visible = false;
-  showMessage(
-    '🚀 <strong>LAUNCH!</strong><br><br>You blasted off with the caged deer.<br>You have landed on a distant planet.<br><br>Bring the cage out of the rocket.',
-    5200
-  );
-}
-
 export function unloadCageOnPlanet(x: number, z: number): void {
   if (planetDropGroup) scene.remove(planetDropGroup);
   planetDropGroup = makeCageMesh(true);
   planetDropGroup.position.set(x, 0, z);
   scene.add(planetDropGroup);
   gameState.cageLoadedInCar = false;
+  gameState.cageLoadedInRocket = false;
   carCargoGroup.visible = false;
 }
 

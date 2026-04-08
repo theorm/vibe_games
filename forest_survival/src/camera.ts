@@ -3,9 +3,30 @@ import { camera } from './scene.js';
 import { gameState } from './state.js';
 import { player } from './player.js';
 import { carPos } from './car.js';
+import { getRocketFlightPose } from './rocket.js';
 import { updateAudioListener } from './audio.js';
 
 export function updateCamera(): void {
+  if (gameState.inRocket) {
+    const pose = getRocketFlightPose();
+    const cosP = Math.cos(pose.pitch);
+    const fwdX = -Math.sin(pose.yaw) * cosP;
+    const fwdY = Math.sin(pose.pitch);
+    const fwdZ = -Math.cos(pose.yaw) * cosP;
+    camera.position.set(
+      pose.pos.x + Math.sin(pose.yaw) * 9,
+      pose.pos.y + 4.5,
+      pose.pos.z + Math.cos(pose.yaw) * 9
+    );
+    camera.lookAt(
+      pose.pos.x + fwdX * 26,
+      pose.pos.y + fwdY * 26,
+      pose.pos.z + fwdZ * 26
+    );
+    updateAudioListener(camera.position.x, camera.position.y, camera.position.z, fwdX, fwdY, fwdZ);
+    return;
+  }
+
   const pivot  = gameState.inCar ? carPos  : player.pos;
   const facing = gameState.inCar ? gameState.carFacing : player.facing;
 

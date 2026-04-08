@@ -6,6 +6,7 @@ import { player, playerGroup, buildPlayer, updatePlayer } from './player.js';
 import { carPos, updateCar, initCarEnvMap } from './car.js';
 import { deer, deerGroup, buildDeer, updateDeer } from './deer.js';
 import { updateCage } from './cage.js';
+import { initRocketWorlds, updateRocketFlight, updateRocketWorldAtmosphere } from './rocket.js';
 import { updateEnemies, spawnZombies, spawnAliens } from './enemies.js';
 import { updateCamera } from './camera.js';
 import { updateHUD, updateClock, updateCarHint, updateMinimap, showMessage, triggerWin, triggerDeath } from './ui.js';
@@ -17,6 +18,7 @@ makeGround();
 buildPlayer();
 buildDeer();
 generateWorld();
+initRocketWorlds();
 
 // Generate environment map for car reflections (needs scene populated first)
 // Render one frame so the scene is populated, then generate env map
@@ -38,11 +40,12 @@ showMessage(
   `🌲 <strong>FOREST SURVIVAL</strong> 🌲<br><br>
   <em>A vicious deer stalks the woods...<br>also aliens, and zombies from the lab.</em><br><br>
   <b>← → Turn &nbsp;&nbsp; ↑ ↓ Move &nbsp;&nbsp; SPACE Action</b><br>
+  <b>Rocket flight: ← → steer, ↑ thrust, ↓ pitch</b><br>
   <b>Phone/Tablet: full-screen zones to move/steer, tap for action, VIEW button for car camera</b><br><br>
   <div id="touch-detect-line" style="font-size:12px;color:#9fd;">Touch detection: checking...</div>
   <button id="touch-manual-enable" class="touch-intro-btn">Enable Touch Controls</button><br><br>
   Chop trees → build workbench → craft pickaxe<br>→ mine ore + wood → craft cage → trap deer<br>
-  → load cage into car → launch rocket → release on another planet<br><br>
+  → load cage into car → load rocket → fly to another planet → release<br><br>
   🚗 Red car parked in the safe zone for emergencies<br>
   🧟 Zombies invade from the lab at dawn<br>
   👽 Aliens land randomly — car runs them over!<br><br>
@@ -96,15 +99,26 @@ function animate(now: number): void {
   lastTime = now;
 
   if (gameStarted && !gameState.gameOver && !gameState.gameWon) {
-    updatePlayer(dt);
-    updateCar(dt);
-    updateDeer(dt);
+    if (gameState.inRocket) {
+      updateRocketFlight(dt);
+    } else if (gameState.onPlanet) {
+      updatePlayer(dt);
+    } else {
+      updatePlayer(dt);
+      updateCar(dt);
+      updateDeer(dt);
+      updateEnemies(dt);
+      updateDayCycle(dt);
+      updateCarHint(player.pos, carPos);
+    }
     updateCage();
-    updateEnemies(dt);
-    updateDayCycle(dt);
-    updateCarHint(player.pos, carPos);
   }
 
+  if (gameState.inRocket || gameState.onPlanet) {
+    updateClock(renderer, scene, sun, ambient, moonLight);
+  }
+
+  updateRocketWorldAtmosphere();
   updateCamera();
   updateHUD(deer, player);
   updateMinimap(player.pos, carPos, deer.pos, deer.alive);

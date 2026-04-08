@@ -8,7 +8,8 @@ import { player, playerGroup } from './player.js';
 import { carPos } from './car.js';
 import { deer } from './deer.js';
 import { placeWorkbench } from './workbench.js';
-import { placeCageTrap, getCageWorldPos, loadCageIntoCar, launchToPlanet, unloadCageOnPlanet } from './cage.js';
+import { placeCageTrap, getCageWorldPos, loadCageIntoCar, unloadCageOnPlanet } from './cage.js';
+import { getRocketGroundPos, loadCageIntoRocket, beginRocketFlight, unloadCageFromRocket, getRocketDistanceToDestination } from './rocket.js';
 import { sfxChop, sfxSwing, sfxCraft, initAudio, startDeerYells } from './audio.js';
 import { setActionHint, showMessage, hideMessage, updateHUD } from './ui.js';
 import {
@@ -34,7 +35,11 @@ function setDrivingHint(): void {
 }
 
 function toggleCarCameraView(): void {
-  if (!gameState.inCar) return;
+  if (!gameState.inCar && !gameState.inRocket) return;
+  if (gameState.inRocket) {
+    setActionHint('🚀 Rocket view is fixed during flight.');
+    return;
+  }
   gameState.driverView = !gameState.driverView;
   if (gameState.inputProfile === 'touch') {
     setActionHint(gameState.driverView
@@ -53,22 +58,32 @@ function handleAction(): void {
   const px = player.pos.x, pz = player.pos.z;
   const fwdX = -Math.sin(player.facing), fwdZ = -Math.cos(player.facing);
   const nearCar = dist2D(px, pz, carPos.x, carPos.z) < 3;
-  const nearRocket = dist2D(px, pz, gameState.rocketPos.x, gameState.rocketPos.z) < gameState.rocketRadius + 3;
+  const rocketGroundPos = getRocketGroundPos();
+  const nearRocket = dist2D(px, pz, rocketGroundPos.x, rocketGroundPos.z) < gameState.rocketRadius + 3;
 
-  if (gameState.onPlanet && gameState.rocketLaunched && gameState.cageLoadedInCar && nearRocket) {
-    unloadCageOnPlanet(gameState.rocketPos.x + 2.2, gameState.rocketPos.z + 1.2);
+  if (gameState.inRocket) {
+    setActionHint('🚀 Flight active — steer with arrows and reach the target planet.');
+    return;
+  }
+
+  if (gameState.onPlanet && gameState.rocketLaunched && gameState.cageLoadedInRocket && nearRocket) {
+    unloadCageFromRocket();
+    unloadCageOnPlanet(rocketGroundPos.x + 2.2, rocketGroundPos.z + 1.2);
     gameState.stage = Math.max(gameState.stage, 6);
     gameState.onWin?.();
     return;
   }
 
-  if (!gameState.rocketLaunched && gameState.cageLoadedInCar && nearRocket) {
-    launchToPlanet();
-    gameState.inCar = false;
-    gameState.driverView = false;
-    playerGroup.visible = true;
-    player.pos.set(gameState.rocketPos.x + 4, 0, gameState.rocketPos.z + 1.2);
+  if (!gameState.rocketLaunched && gameState.cageLoadedInRocket && nearRocket) {
+    beginRocketFlight();
     gameState.stage = Math.max(gameState.stage, 5);
+    return;
+  }
+
+  if (!gameState.rocketLaunched && gameState.cageLoadedInCar && nearRocket) {
+    if (loadCageIntoRocket()) {
+      setActionHint('🚀 Cage loaded. Board the rocket and fly to another planet.');
+    }
     return;
   }
 
@@ -77,7 +92,7 @@ function handleAction(): void {
     if (dist2D(carPos.x, carPos.z, cagePos.x, cagePos.z) < 4.3) {
       if (loadCageIntoCar()) {
         setActionHint('📦 Caged deer loaded into car! Drive it to the rocket.');
-        showMessage('📦 <strong>CAGED DEER LOADED</strong><br>Drive to the rocket site, then launch to a new planet.', 4200);
+        showMessage('📦 <strong>CAGED DEER LOADED</strong><br>Drive to the rocket site, load the cage into the rocket, then fly.', 4200);
         gameState.stage = Math.max(gameState.stage, 5);
       }
     } else {
@@ -227,6 +242,11 @@ export function checkProgress(): void {
 
 export function updateContextHints(): void {
   if (gameState.gameOver || gameState.gameWon) return;
+  if (gameState.inRocket) {
+    const dist = Math.round(getRocketDistanceToDestination());
+    setActionHint(`🚀 Pilot rocket: ← → steer, ↑ thrust, ↓ pitch | Destination: ${dist}m`);
+    return;
+  }
   if (gameState.inCar) {
     if (gameState.inputProfile === 'touch') setActionHint('🚗 Driving — tap VIEW for camera, TAP to exit');
     else setActionHint('🚗 Driving — V toggle camera, SPACE to exit');
@@ -234,9 +254,11 @@ export function updateContextHints(): void {
   }
   const px = player.pos.x, pz = player.pos.z;
   const action = actionControlName();
+  const rocketGroundPos = getRocketGroundPos();
+  const rocketNear = dist2D(px, pz, rocketGroundPos.x, rocketGroundPos.z) < gameState.rocketRadius + 3;
 
-  if (gameState.onPlanet && gameState.rocketLaunched && gameState.cageLoadedInCar) {
-    if (dist2D(px, pz, gameState.rocketPos.x, gameState.rocketPos.z) < gameState.rocketRadius + 3) {
+  if (gameState.onPlanet && gameState.rocketLaunched && gameState.cageLoadedInRocket) {
+    if (rocketNear) {
       setActionHint(`[${action}] 🪐 Unload cage on this planet`);
       return;
     }
@@ -244,9 +266,18 @@ export function updateContextHints(): void {
     return;
   }
 
-  if (gameState.cageLoadedInCar && !gameState.rocketLaunched) {
-    if (dist2D(px, pz, gameState.rocketPos.x, gameState.rocketPos.z) < gameState.rocketRadius + 3) {
-      setActionHint(`[${action}] 🚀 Launch rocket with caged deer`);
+  if (!gameState.rocketLaunched && gameState.cageLoadedInRocket) {
+    if (rocketNear) {
+      setActionHint(`[${action}] 🚀 Board and pilot rocket`);
+      return;
+    }
+    setActionHint('🚀 Return to the rocket and start the flight.');
+    return;
+  }
+
+  if (!gameState.rocketLaunched && gameState.cageLoadedInCar) {
+    if (rocketNear) {
+      setActionHint(`[${action}] 📦 Load cage into rocket`);
       return;
     }
     setActionHint('🚗 Drive to the rocket site with the caged deer.');

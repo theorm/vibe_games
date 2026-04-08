@@ -42,7 +42,9 @@ export const gameState = {
   cagePlaced: false,
   deerCaptured: false,
   cageLoadedInCar: false,
+  cageLoadedInRocket: false,
   rocketLaunched: false,
+  inRocket: false,
   onPlanet: false,
   hasSword: false,
   hasPickaxe: false,
@@ -64,6 +66,9 @@ export const gameState = {
   // Rocket position for collision
   rocketPos: { x: 0, z: 80 },
   rocketRadius: 8,
+  planetPos: { x: -112, z: 112 },
+  rocketFlightPos: { x: 0, z: 80 },
+  rocketFlightDest: { x: 0, z: 560 },
   // Workbench position (set by workbench.ts, read by player.ts for collision)
   workbenchPos: null as any,
   // Win/death callbacks — set by main.ts to avoid circular imports
