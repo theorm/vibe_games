@@ -47,6 +47,8 @@
   @keyframes pulse { from { opacity: 1; } to { opacity: 0.6; } }
   #car-hint { position: fixed; bottom: 118px; left: 50%; transform: translateX(-50%); color: #0ff; font-size: 13px; text-shadow: 1px 1px 0 #000; background: rgba(0,0,60,0.75); padding: 4px 14px; border: 1px solid #0af; display: none; }
   #clock { position: fixed; top: 16px; left: 50%; transform: translateX(-50%); color: #ffe; font-size: 13px; text-shadow: 1px 1px 0 #000; background: rgba(0,0,0,0.45); padding: 2px 14px; border: 1px solid #555; }
+  #reset-game-btn { position: fixed; top: 48px; left: 50%; transform: translateX(-50%); pointer-events: auto; color: #fff; font: inherit; font-size: 11px; text-shadow: 1px 1px 0 #000; background: rgba(72,20,20,0.82); border: 1px solid #d08080; padding: 4px 10px; cursor: pointer; }
+  #reset-game-btn:hover { background: rgba(110,28,28,0.92); }
   #touch-controls { position: fixed; inset: 0; display: none; pointer-events: none; z-index: 35; }
   #touch-zones { position: fixed; inset: 0; pointer-events: auto; touch-action: none; }
   #touch-zones::before, #touch-zones::after { content: ''; position: absolute; background: rgba(140,190,255,0.14); }
@@ -69,6 +71,7 @@
     <div id="resource-info" style="margin-top:8px;font-size:12px;"></div>
   </div>
   <div id="clock">☀️ Day</div>
+  <button id="reset-game-btn">Reset Game</button>
   <div id="inventory"></div>
   <div id="crosshair"></div>
   <div id="message"></div>
@@ -92,6 +95,6 @@
 </div>
 <!-- Three.js r128 from CDN — loaded as a global before ES modules execute -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-<script src="dist/bundle.js?v=76c12dcc9772"></script>
+<script src="dist/bundle.js?v=16f97229ad40"></script>
 </body>
 </html>

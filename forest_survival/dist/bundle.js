@@ -112,8 +112,7 @@
 	const DEER_SPD = 3.5;
 	const DEER_ATK_INT = 1.8;
 	const CAR_TURN = 2.2;
-	const ROCKET_TURN = 1.6;
-	const ROCKET_PITCH = 1.2;
+	const ROCKET_PITCH = 1.8;
 	//#endregion
 	//#region src/world.ts
 	function dist2D(ax, az, bx, bz) {
@@ -220,6 +219,10 @@
 			hp: 3,
 			alive: true
 		});
+	}
+	let groundRocketMesh = null;
+	function hideGroundRocket() {
+		if (groundRocketMesh) groundRocketMesh.visible = false;
 	}
 	function tuneSiteTexture(tex, repeatX, repeatY, isColor) {
 		tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
@@ -487,6 +490,7 @@
 			bNose.castShadow = true;
 			rocket.add(bNose);
 		}
+		groundRocketMesh = rocket;
 		g.add(rocket);
 		for (let i = 0; i < 3; i++) {
 			const tank = new THREE.Mesh(new THREE.CylinderGeometry(1.5, 1.5, 4, 14), structuralSteel);
@@ -929,7 +933,7 @@
 	function triggerWin() {
 		gameState.gameWon = true;
 		gameState.deerAlive = false;
-		showMessage(`🎉 <strong>VICTORY!</strong><br><br>You relocated the deer to another planet.<br>The forest is safe, and the deer lives.<br><br><em style="font-size:13px">Reload to play again</em>`);
+		showMessage(`🎉 <strong>VICTORY!</strong><br><br>You relocated the deer to another planet.<br>The forest is safe, and the deer lives.<br><br><em style="font-size:13px">Use Reset Game to play again</em>`);
 	}
 	function triggerDeath(by = "deer") {
 		gameState.gameOver = true;
@@ -938,7 +942,7 @@
 			alien: "👽 Abducted and probed.",
 			zombie: "🧟 You became a zombie."
 		};
-		showMessage(`💀 <strong>YOU DIED</strong><br><br>${msgs[by] || msgs.deer}<br><br><em style="font-size:13px">Reload to try again</em>`);
+		showMessage(`💀 <strong>YOU DIED</strong><br><br>${msgs[by] || msgs.deer}<br><br><em style="font-size:13px">Use Reset Game to try again</em>`);
 	}
 	//#endregion
 	//#region src/audio.ts
@@ -1693,6 +1697,22 @@
 		axeB.position.set(.62, 1.1, .15);
 		playerGroup.add(axeB);
 	}
+	function addSwordToPlayer() {
+		const toRemove = [];
+		playerGroup.children.forEach((c, i) => {
+			if (i >= 8) toRemove.push(c);
+		});
+		toRemove.forEach((c) => playerGroup.remove(c));
+		const blade = new THREE.Mesh(new THREE.BoxGeometry(.08, .7, .04), new THREE.MeshLambertMaterial({ color: 14540287 }));
+		blade.position.set(.55, 1.05, .1);
+		playerGroup.add(blade);
+		const guard = new THREE.Mesh(new THREE.BoxGeometry(.28, .06, .06), new THREE.MeshLambertMaterial({ color: 13934615 }));
+		guard.position.set(.55, .72, .1);
+		playerGroup.add(guard);
+		const grip = new THREE.Mesh(new THREE.BoxGeometry(.07, .28, .07), new THREE.MeshLambertMaterial({ color: 5910544 }));
+		grip.position.set(.55, .56, .1);
+		playerGroup.add(grip);
+	}
 	function updatePlayer(dt) {
 		if (gameState.gameOver || gameState.gameWon || gameState.inCar || gameState.inRocket) return;
 		if (keys["ArrowLeft"]) player.facing += 1.8 * dt;
@@ -2425,6 +2445,7 @@
 	let trapGroup = null;
 	let trapPos = null;
 	let planetDropGroup = null;
+	let planetDropPos = null;
 	const carCargoGroup = new THREE.Group();
 	carCargoGroup.visible = false;
 	scene.add(carCargoGroup);
@@ -2514,6 +2535,16 @@
 		if (!trapPos || !gameState.deerCaptured || gameState.cageLoadedInCar) return null;
 		return trapPos;
 	}
+	function getPlacedEmptyCagePos() {
+		if (!trapPos || !gameState.cagePlaced || gameState.deerCaptured) return null;
+		return trapPos;
+	}
+	function pickUpCage() {
+		if (!gameState.cagePlaced || gameState.deerCaptured) return false;
+		gameState.cagePlaced = false;
+		if (trapGroup) trapGroup.visible = false;
+		return true;
+	}
 	function loadCageIntoCar() {
 		if (!gameState.deerCaptured || gameState.cageLoadedInCar) return false;
 		gameState.cageLoadedInCar = true;
@@ -2529,9 +2560,53 @@
 		planetDropGroup = makeCageMesh(true);
 		planetDropGroup.position.set(x, 0, z);
 		scene.add(planetDropGroup);
+		planetDropPos = new THREE.Vector3(x, 0, z);
 		gameState.cageLoadedInCar = false;
 		gameState.cageLoadedInRocket = false;
 		carCargoGroup.visible = false;
+	}
+	function getCageSaveState() {
+		return {
+			trapPos: trapPos ? {
+				x: trapPos.x,
+				z: trapPos.z
+			} : null,
+			planetDropPos: planetDropPos ? {
+				x: planetDropPos.x,
+				z: planetDropPos.z
+			} : null
+		};
+	}
+	function restoreCageVisuals(saved) {
+		if (saved.trapPos) {
+			if (!trapGroup) {
+				trapGroup = new THREE.Group();
+				scene.add(trapGroup);
+			}
+			trapPos = new THREE.Vector3(saved.trapPos.x, 0, saved.trapPos.z);
+			trapGroup.position.set(trapPos.x, 0, trapPos.z);
+			trapGroup.visible = gameState.cagePlaced && !gameState.cageLoadedInCar && !gameState.cageLoadedInRocket;
+			rebuildTrapVisual(gameState.deerCaptured);
+		} else if (trapGroup) {
+			trapPos = null;
+			trapGroup.visible = false;
+		}
+		carCargoGroup.clear();
+		if (gameState.cageLoadedInCar) {
+			carCargoGroup.add(makeCageMesh(true));
+			carCargoGroup.visible = true;
+			carCargoGroup.position.set(carPos.x, .45, carPos.z);
+			carCargoGroup.rotation.y = gameState.carFacing;
+		} else carCargoGroup.visible = false;
+		if (planetDropGroup) scene.remove(planetDropGroup);
+		planetDropGroup = null;
+		planetDropPos = null;
+		if (saved.planetDropPos) {
+			planetDropPos = new THREE.Vector3(saved.planetDropPos.x, 0, saved.planetDropPos.z);
+			planetDropGroup = makeCageMesh(true);
+			planetDropGroup.position.set(planetDropPos.x, 0, planetDropPos.z);
+			scene.add(planetDropGroup);
+		}
 	}
 	function updateCage() {
 		if (gameState.cageLoadedInCar) {
@@ -2680,6 +2755,41 @@
 			pitch: rocketPitch
 		};
 	}
+	function restoreRocketFlightPose(saved) {
+		rocketPos.set(saved.pos?.x ?? launchPadPos.x, saved.pos?.y ?? 10, saved.pos?.z ?? launchPadPos.z);
+		rocketVel.set(0, 0, 0);
+		rocketYaw = saved.yaw ?? Math.PI;
+		rocketPitch = saved.pitch ?? .1;
+		gameState.rocketFlightPos.x = rocketPos.x;
+		gameState.rocketFlightPos.z = rocketPos.z;
+		gameState.rocketFlightDest.x = destinationPos.x;
+		gameState.rocketFlightDest.z = destinationPos.z;
+		spaceFlightGroup.position.copy(rocketPos);
+		spaceFlightGroup.rotation.set(-rocketPitch, rocketYaw + Math.PI, 0);
+	}
+	function syncRocketVisualsToState() {
+		if (gameState.inRocket) {
+			hideGroundRocket();
+			spaceFlightGroup.visible = true;
+			spaceBackdrop.visible = true;
+			planetWorldGroup.visible = false;
+			landedRocketGroup.visible = false;
+			playerGroup.visible = false;
+			return;
+		}
+		spaceFlightGroup.visible = false;
+		spaceBackdrop.visible = false;
+		if (gameState.onPlanet) {
+			hideGroundRocket();
+			planetWorldGroup.visible = true;
+			landedRocketGroup.visible = true;
+			playerGroup.visible = true;
+			return;
+		}
+		planetWorldGroup.visible = false;
+		landedRocketGroup.visible = false;
+		playerGroup.visible = true;
+	}
 	function loadCageIntoRocket() {
 		if (!gameState.cageLoadedInCar || gameState.cageLoadedInRocket) return false;
 		gameState.cageLoadedInCar = false;
@@ -2704,6 +2814,7 @@
 		gameState.rocketFlightPos.z = rocketPos.z;
 		gameState.rocketFlightDest.x = destinationPos.x;
 		gameState.rocketFlightDest.z = destinationPos.z;
+		hideGroundRocket();
 		spaceFlightGroup.visible = true;
 		spaceBackdrop.visible = true;
 		landedRocketGroup.visible = false;
@@ -2730,12 +2841,12 @@
 	}
 	function updateRocketFlight(dt) {
 		if (!gameState.inRocket) return;
-		if (keys["ArrowLeft"]) rocketYaw += ROCKET_TURN * dt;
-		if (keys["ArrowRight"]) rocketYaw -= ROCKET_TURN * dt;
+		if (keys["ArrowLeft"]) rocketYaw += 2 * dt;
+		if (keys["ArrowRight"]) rocketYaw -= 2 * dt;
 		if (keys["ArrowUp"]) rocketPitch = Math.min(.55, rocketPitch + ROCKET_PITCH * dt * .4);
 		if (keys["ArrowDown"]) rocketPitch = Math.max(-.35, rocketPitch - ROCKET_PITCH * dt * .4);
-		const thrust = keys["ArrowUp"] ? 38 : 38 * .28;
-		const drag = Math.exp(-dt * .55);
+		const thrust = keys["ArrowUp"] ? 70 : 0;
+		const drag = Math.exp(-dt * 1.8);
 		rocketVel.multiplyScalar(drag);
 		const cosP = Math.cos(rocketPitch);
 		const fwd = new THREE.Vector3(-Math.sin(rocketYaw) * cosP, Math.sin(rocketPitch), -Math.cos(rocketYaw) * cosP);
@@ -3157,6 +3268,14 @@
 			} else setActionHint("🚗 Bring the car closer to load the caged deer.");
 			return;
 		}
+		const emptyCagePos = getPlacedEmptyCagePos();
+		if (emptyCagePos && dist2D(px, pz, emptyCagePos.x, emptyCagePos.z) < 2.8) {
+			if (pickUpCage()) {
+				setActionHint("🪤 Cage picked up. Place it somewhere else.");
+				showMessage("🪤 <strong>CAGE PICKED UP</strong><br>Press " + actionControlName() + " on open ground to place it again.", 3e3);
+			}
+			return;
+		}
 		if (gameState.hasCage && !gameState.cagePlaced && !gameState.deerCaptured) {
 			if (placeCageTrap(px + fwdX * 2, pz + fwdZ * 2)) {
 				setActionHint("🪤 Bait cage placed. Lure the deer inside.");
@@ -3351,12 +3470,223 @@
 		document.addEventListener("gesturechange", (e) => e.preventDefault());
 	}
 	//#endregion
+	//#region src/persistence.ts
+	const SAVE_KEY = "forest-survival-save-v2";
+	const SAVE_VERSION = 2;
+	const STATE_KEYS = [
+		"playerHP",
+		"deerHP",
+		"playerAttackTimer",
+		"gameOver",
+		"gameWon",
+		"resources",
+		"built",
+		"hasCage",
+		"cagePlaced",
+		"deerCaptured",
+		"cageLoadedInCar",
+		"cageLoadedInRocket",
+		"rocketLaunched",
+		"inRocket",
+		"onPlanet",
+		"hasSword",
+		"hasPickaxe",
+		"stage",
+		"dayTime",
+		"wasDawn",
+		"alienTimer",
+		"inCar",
+		"carFacing",
+		"driverView",
+		"inputProfile",
+		"deerState",
+		"deerAlive",
+		"deerPos"
+	];
+	function cloneStateForSave() {
+		const state = {};
+		for (const key of STATE_KEYS) state[key] = structuredClone(gameState[key]);
+		return state;
+	}
+	function vec3(v) {
+		return {
+			x: v.x,
+			y: v.y ?? 0,
+			z: v.z
+		};
+	}
+	function saveGame(gameStarted) {
+		if (!gameStarted) return;
+		try {
+			const rocketPose = getRocketFlightPose();
+			const data = {
+				version: SAVE_VERSION,
+				savedAt: Date.now(),
+				gameStarted,
+				state: cloneStateForSave(),
+				player: {
+					pos: vec3(player.pos),
+					facing: player.facing,
+					invincTimer: player.invincTimer
+				},
+				deer: {
+					pos: vec3(deer.pos),
+					facing: deer.facing,
+					hp: deer.hp,
+					state: deer.state,
+					wanderTarget: vec3(deer.wanderTarget),
+					wanderTimer: deer.wanderTimer,
+					attackTimer: deer.attackTimer,
+					alive: deer.alive
+				},
+				car: { pos: vec3(carPos) },
+				world: {
+					trees: trees.map((t) => ({
+						x: t.x,
+						z: t.z,
+						hp: t.hp,
+						alive: t.alive
+					})),
+					mines: mines.map((m) => ({
+						x: m.x,
+						z: m.z,
+						hp: m.hp,
+						alive: m.alive
+					})),
+					deforestedCells: [...deforestedCells],
+					workbenchPos: gameState.workbenchPos ? {
+						x: gameState.workbenchPos.x,
+						z: gameState.workbenchPos.z
+					} : null
+				},
+				cage: getCageSaveState(),
+				rocket: {
+					pos: vec3(rocketPose.pos),
+					yaw: rocketPose.yaw,
+					pitch: rocketPose.pitch
+				}
+			};
+			localStorage.setItem(SAVE_KEY, JSON.stringify(data));
+		} catch (err) {
+			console.warn("[save] Unable to write game save", err);
+		}
+	}
+	function clearSavedGame() {
+		try {
+			localStorage.removeItem(SAVE_KEY);
+		} catch (err) {
+			console.warn("[save] Unable to clear game save", err);
+		}
+	}
+	function applyWorldSave(saved) {
+		if (saved.world.trees.length === trees.length) for (let i = 0; i < trees.length; i++) {
+			const src = saved.world.trees[i];
+			const tree = trees[i];
+			tree.x = src.x;
+			tree.z = src.z;
+			tree.hp = src.hp;
+			tree.alive = src.alive;
+			tree.mesh.position.set(src.x, 0, src.z);
+			tree.mesh.visible = src.alive;
+			if (!src.alive) addStump(src.x, src.z);
+		}
+		if (saved.world.mines.length === mines.length) for (let i = 0; i < mines.length; i++) {
+			const src = saved.world.mines[i];
+			const mine = mines[i];
+			mine.x = src.x;
+			mine.z = src.z;
+			mine.hp = src.hp;
+			mine.alive = src.alive;
+			mine.mesh.position.set(src.x, 0, src.z);
+			mine.mesh.visible = src.alive;
+		}
+		deforestedCells.clear();
+		for (const cell of saved.world.deforestedCells) deforestedCells.add(cell);
+		if (saved.world.workbenchPos && saved.state.built?.workbench) placeWorkbench(saved.world.workbenchPos.x, saved.world.workbenchPos.z);
+		else {
+			gameState.built.workbench = false;
+			gameState.workbenchPos = null;
+		}
+	}
+	function applyActorSave(saved) {
+		player.pos.set(saved.player.pos.x, saved.player.pos.y, saved.player.pos.z);
+		player.facing = saved.player.facing;
+		player.invincTimer = saved.player.invincTimer;
+		playerGroup.position.copy(player.pos);
+		playerGroup.rotation.y = player.facing + Math.PI;
+		if (gameState.hasSword) addSwordToPlayer();
+		deer.pos.set(saved.deer.pos.x, saved.deer.pos.y, saved.deer.pos.z);
+		deer.facing = saved.deer.facing;
+		deer.hp = saved.deer.hp;
+		deer.state = saved.deer.state;
+		deer.wanderTarget.set(saved.deer.wanderTarget.x, saved.deer.wanderTarget.y, saved.deer.wanderTarget.z);
+		deer.wanderTimer = saved.deer.wanderTimer;
+		deer.attackTimer = saved.deer.attackTimer;
+		deer.alive = saved.deer.alive;
+		deerGroup.position.copy(deer.pos);
+		deerGroup.rotation.y = deer.facing;
+		deerGroup.visible = deer.alive && !gameState.deerCaptured;
+		carPos.set(saved.car.pos.x, saved.car.pos.y, saved.car.pos.z);
+		carGroup.position.copy(carPos);
+		carGroup.rotation.y = gameState.carFacing + Math.PI / 2;
+		if (gameState.inCar) {
+			player.pos.copy(carPos);
+			playerGroup.visible = false;
+		}
+	}
+	function loadSavedGame() {
+		let saved = null;
+		try {
+			const raw = localStorage.getItem(SAVE_KEY);
+			if (!raw) return {
+				loaded: false,
+				gameStarted: false
+			};
+			saved = JSON.parse(raw);
+		} catch (err) {
+			console.warn("[save] Unable to read game save", err);
+			clearSavedGame();
+			return {
+				loaded: false,
+				gameStarted: false
+			};
+		}
+		if (!saved || saved.version !== SAVE_VERSION) {
+			clearSavedGame();
+			return {
+				loaded: false,
+				gameStarted: false
+			};
+		}
+		for (const key of STATE_KEYS) if (key in saved.state) gameState[key] = structuredClone(saved.state[key]);
+		applyWorldSave(saved);
+		applyActorSave(saved);
+		restoreRocketFlightPose(saved.rocket);
+		restoreCageVisuals(saved.cage);
+		syncRocketVisualsToState();
+		return {
+			loaded: true,
+			gameStarted: saved.gameStarted
+		};
+	}
+	function initPersistenceHooks(getGameStarted) {
+		setInterval(() => saveGame(getGameStarted()), 1e3);
+		window.addEventListener("pagehide", () => saveGame(getGameStarted()));
+		window.addEventListener("beforeunload", () => saveGame(getGameStarted()));
+		document.getElementById("reset-game-btn")?.addEventListener("click", () => {
+			if (!window.confirm("Reset saved Forest Survival progress and start over?")) return;
+			clearSavedGame();
+			window.location.reload();
+		});
+	}
+	//#endregion
 	//#region src/main.ts
 	makeGround();
 	buildPlayer();
 	buildDeer();
 	generateWorld();
 	initRocketWorlds();
+	const savedGame = loadSavedGame();
 	renderer.render(scene, camera);
 	initCarEnvMap();
 	gameState.onWin = () => {
@@ -3367,23 +3697,27 @@
 	gameState.onDeath = (by) => {
 		triggerDeath(by);
 	};
-	showMessage(`🌲 <strong>FOREST SURVIVAL</strong> 🌲<br><br>
-  <em>A vicious deer stalks the woods...<br>also aliens, and zombies from the lab.</em><br><br>
-  <b>← → Turn &nbsp;&nbsp; ↑ ↓ Move &nbsp;&nbsp; SPACE Action</b><br>
-  <b>Rocket flight: ← → steer, ↑ thrust, ↓ pitch</b><br>
-  <b>Phone/Tablet: full-screen zones to move/steer, tap for action, VIEW button for car camera</b><br><br>
-  <div id="touch-detect-line" style="font-size:12px;color:#9fd;">Touch detection: checking...</div>
-  <button id="touch-manual-enable" class="touch-intro-btn">Enable Touch Controls</button><br><br>
-  Chop trees → build workbench → craft pickaxe<br>→ mine ore + wood → craft cage → trap deer<br>
-  → load cage into car → load rocket → fly to another planet → release<br><br>
-  🚗 Red car parked in the safe zone for emergencies<br>
-  🧟 Zombies invade from the lab at dawn<br>
-  👽 Aliens land randomly — car runs them over!<br><br>
-  <strong style="color:#ffd700">Press any arrow key or tap screen to begin</strong>`, 0);
-	let gameStarted = false;
+	if (!savedGame.loaded) showMessage(`🌲 <strong>FOREST SURVIVAL</strong> 🌲<br><br>
+    <em>A vicious deer stalks the woods...<br>also aliens, and zombies from the lab.</em><br><br>
+    <b>← → Turn &nbsp;&nbsp; ↑ ↓ Move &nbsp;&nbsp; SPACE Action</b><br>
+    <b>Rocket flight: ← → steer, ↑ thrust, ↓ pitch</b><br>
+    <b>Phone/Tablet: full-screen zones to move/steer, tap for action, VIEW button for car camera</b><br><br>
+    <div id="touch-detect-line" style="font-size:12px;color:#9fd;">Touch detection: checking...</div>
+    <button id="touch-manual-enable" class="touch-intro-btn">Enable Touch Controls</button><br><br>
+    Chop trees → build workbench → craft pickaxe<br>→ mine ore + wood → craft cage → trap deer<br>
+    → load cage into car → load rocket → fly to another planet → release<br><br>
+    🚗 Red car parked in the safe zone for emergencies<br>
+    🧟 Zombies invade from the lab at dawn<br>
+    👽 Aliens land randomly — car runs them over!<br><br>
+    <strong style="color:#ffd700">Press any arrow key or tap screen to begin</strong>`, 0);
+	else if (gameState.gameWon) triggerWin();
+	else if (gameState.gameOver) triggerDeath();
+	else showMessage("💾 <strong>Saved game loaded</strong><br>Your forest run has been restored.", 2200);
+	let gameStarted = savedGame.gameStarted;
 	initInput(() => {
 		gameStarted = true;
 	});
+	initPersistenceHooks(() => gameStarted);
 	setInterval(() => {
 		if (!gameState.gameOver && !gameState.gameWon) {
 			if (Math.sqrt(player.pos.x ** 2 + player.pos.z ** 2) < 8 && gameState.playerHP < 100) gameState.playerHP = Math.min(100, gameState.playerHP + 1);

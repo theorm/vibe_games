@@ -207,7 +207,7 @@ export function updateMinimap(playerPos: any, carPos: any, deerPos: any, deerAli
 export function triggerWin(): void {
   gameState.gameWon  = true;
   gameState.deerAlive = false;
-  showMessage(`🎉 <strong>VICTORY!</strong><br><br>You relocated the deer to another planet.<br>The forest is safe, and the deer lives.<br><br><em style="font-size:13px">Reload to play again</em>`);
+  showMessage(`🎉 <strong>VICTORY!</strong><br><br>You relocated the deer to another planet.<br>The forest is safe, and the deer lives.<br><br><em style="font-size:13px">Use Reset Game to play again</em>`);
 }
 
 export function triggerDeath(by = 'deer'): void {
@@ -217,5 +217,5 @@ export function triggerDeath(by = 'deer'): void {
     alien:  '👽 Abducted and probed.',
     zombie: '🧟 You became a zombie.',
   };
-  showMessage(`💀 <strong>YOU DIED</strong><br><br>${msgs[by] || msgs.deer}<br><br><em style="font-size:13px">Reload to try again</em>`);
+  showMessage(`💀 <strong>YOU DIED</strong><br><br>${msgs[by] || msgs.deer}<br><br><em style="font-size:13px">Use Reset Game to try again</em>`);
 }

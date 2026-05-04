@@ -2,6 +2,7 @@
 declare const THREE: typeof import('three');
 
 import { renderer, scene } from './scene.js';
+import { hideGroundRocket } from './world.js';
 import { gameState, keys } from './state.js';
 import { ROCKET_THRUST, ROCKET_TURN, ROCKET_PITCH } from './constants.js';
 import { player, playerGroup } from './player.js';
@@ -144,6 +145,55 @@ export function getRocketFlightPose(): { pos: import('three').Vector3; yaw: numb
   return { pos: rocketPos, yaw: rocketYaw, pitch: rocketPitch };
 }
 
+export function restoreRocketFlightPose(saved: {
+  pos?: { x: number; y?: number; z: number };
+  yaw?: number;
+  pitch?: number;
+}): void {
+  rocketPos.set(
+    saved.pos?.x ?? launchPadPos.x,
+    saved.pos?.y ?? 10,
+    saved.pos?.z ?? launchPadPos.z
+  );
+  rocketVel.set(0, 0, 0);
+  rocketYaw = saved.yaw ?? Math.PI;
+  rocketPitch = saved.pitch ?? 0.1;
+  gameState.rocketFlightPos.x = rocketPos.x;
+  gameState.rocketFlightPos.z = rocketPos.z;
+  gameState.rocketFlightDest.x = destinationPos.x;
+  gameState.rocketFlightDest.z = destinationPos.z;
+
+  spaceFlightGroup.position.copy(rocketPos);
+  spaceFlightGroup.rotation.set(-rocketPitch, rocketYaw + Math.PI, 0);
+}
+
+export function syncRocketVisualsToState(): void {
+  if (gameState.inRocket) {
+    hideGroundRocket();
+    spaceFlightGroup.visible = true;
+    spaceBackdrop.visible = true;
+    planetWorldGroup.visible = false;
+    landedRocketGroup.visible = false;
+    playerGroup.visible = false;
+    return;
+  }
+
+  spaceFlightGroup.visible = false;
+  spaceBackdrop.visible = false;
+
+  if (gameState.onPlanet) {
+    hideGroundRocket();
+    planetWorldGroup.visible = true;
+    landedRocketGroup.visible = true;
+    playerGroup.visible = true;
+    return;
+  }
+
+  planetWorldGroup.visible = false;
+  landedRocketGroup.visible = false;
+  playerGroup.visible = true;
+}
+
 export function getRocketDistanceToDestination(): number {
   return rocketPos.distanceTo(destinationPos);
 }
@@ -177,6 +227,7 @@ export function beginRocketFlight(): boolean {
   gameState.rocketFlightDest.x = destinationPos.x;
   gameState.rocketFlightDest.z = destinationPos.z;
 
+  hideGroundRocket();
   spaceFlightGroup.visible = true;
   spaceBackdrop.visible = true;
   landedRocketGroup.visible = false;
@@ -215,8 +266,8 @@ export function updateRocketFlight(dt: number): void {
   if (keys['ArrowUp']) rocketPitch = Math.min(0.55, rocketPitch + ROCKET_PITCH * dt * 0.4);
   if (keys['ArrowDown']) rocketPitch = Math.max(-0.35, rocketPitch - ROCKET_PITCH * dt * 0.4);
 
-  const thrust = keys['ArrowUp'] ? ROCKET_THRUST : ROCKET_THRUST * 0.28;
-  const drag = Math.exp(-dt * 0.55);
+  const thrust = keys['ArrowUp'] ? ROCKET_THRUST : 0;
+  const drag = Math.exp(-dt * 1.8);
   rocketVel.multiplyScalar(drag);
   const cosP = Math.cos(rocketPitch);
   const fwd = new THREE.Vector3(

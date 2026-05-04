@@ -13,6 +13,7 @@ const CAGE_CAPTURE_R = 1.7;
 let trapGroup: import('three').Group | null = null;
 let trapPos: import('three').Vector3 | null = null;
 let planetDropGroup: import('three').Group | null = null;
+let planetDropPos: import('three').Vector3 | null = null;
 
 const carCargoGroup = new THREE.Group();
 carCargoGroup.visible = false;
@@ -99,6 +100,18 @@ export function getCageWorldPos(): import('three').Vector3 | null {
   return trapPos;
 }
 
+export function getPlacedEmptyCagePos(): import('three').Vector3 | null {
+  if (!trapPos || !gameState.cagePlaced || gameState.deerCaptured) return null;
+  return trapPos;
+}
+
+export function pickUpCage(): boolean {
+  if (!gameState.cagePlaced || gameState.deerCaptured) return false;
+  gameState.cagePlaced = false;
+  if (trapGroup) trapGroup.visible = false;
+  return true;
+}
+
 export function loadCageIntoCar(): boolean {
   if (!gameState.deerCaptured || gameState.cageLoadedInCar) return false;
   gameState.cageLoadedInCar = true;
@@ -115,9 +128,59 @@ export function unloadCageOnPlanet(x: number, z: number): void {
   planetDropGroup = makeCageMesh(true);
   planetDropGroup.position.set(x, 0, z);
   scene.add(planetDropGroup);
+  planetDropPos = new THREE.Vector3(x, 0, z);
   gameState.cageLoadedInCar = false;
   gameState.cageLoadedInRocket = false;
   carCargoGroup.visible = false;
+}
+
+export function getCageSaveState(): {
+  trapPos: { x: number; z: number } | null;
+  planetDropPos: { x: number; z: number } | null;
+} {
+  return {
+    trapPos: trapPos ? { x: trapPos.x, z: trapPos.z } : null,
+    planetDropPos: planetDropPos ? { x: planetDropPos.x, z: planetDropPos.z } : null,
+  };
+}
+
+export function restoreCageVisuals(saved: {
+  trapPos?: { x: number; z: number } | null;
+  planetDropPos?: { x: number; z: number } | null;
+}): void {
+  if (saved.trapPos) {
+    if (!trapGroup) {
+      trapGroup = new THREE.Group();
+      scene.add(trapGroup);
+    }
+    trapPos = new THREE.Vector3(saved.trapPos.x, 0, saved.trapPos.z);
+    trapGroup.position.set(trapPos.x, 0, trapPos.z);
+    trapGroup.visible = gameState.cagePlaced && !gameState.cageLoadedInCar && !gameState.cageLoadedInRocket;
+    rebuildTrapVisual(gameState.deerCaptured);
+  } else if (trapGroup) {
+    trapPos = null;
+    trapGroup.visible = false;
+  }
+
+  carCargoGroup.clear();
+  if (gameState.cageLoadedInCar) {
+    carCargoGroup.add(makeCageMesh(true));
+    carCargoGroup.visible = true;
+    carCargoGroup.position.set(carPos.x, 0.45, carPos.z);
+    carCargoGroup.rotation.y = gameState.carFacing;
+  } else {
+    carCargoGroup.visible = false;
+  }
+
+  if (planetDropGroup) scene.remove(planetDropGroup);
+  planetDropGroup = null;
+  planetDropPos = null;
+  if (saved.planetDropPos) {
+    planetDropPos = new THREE.Vector3(saved.planetDropPos.x, 0, saved.planetDropPos.z);
+    planetDropGroup = makeCageMesh(true);
+    planetDropGroup.position.set(planetDropPos.x, 0, planetDropPos.z);
+    scene.add(planetDropGroup);
+  }
 }
 
 export function updateCage(): void {

@@ -233,3 +233,12 @@ Rocket navigation clarity pass:
 - Replaced flickery random star placement in the minimap with stable starfield dots for better readability during flight.
 - Added live destination distance in the rocket action hint while piloting, so players can confirm they are closing in on the target.
 - Mirrored rocket flight position/destination into shared game state for UI rendering without extra coupling.
+
+# v.23
+
+Persistent save and reset flow:
+
+- Added localStorage persistence for core progress, resources, world harvest state, player/deer/car positions, cage visuals, and rocket flight state.
+- Reloading the page now restores a saved run and resumes play instead of always starting from scratch.
+- Added a `Reset Game` button that clears the saved slot and reloads into a fresh game.
+- Updated win/death messaging to point players to the reset button instead of browser reload.

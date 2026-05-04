@@ -170,6 +170,12 @@ export function makeMine(x: number, z: number): void {
   mines.push({ mesh: g, x, z, hp: 3, alive: true });
 }
 
+let groundRocketMesh: import('three').Group | null = null;
+
+export function hideGroundRocket(): void {
+  if (groundRocketMesh) groundRocketMesh.visible = false;
+}
+
 // ── Rocket Site factory ───────────────────────────────────
 
 function tuneSiteTexture(
@@ -466,6 +472,7 @@ export function makeRocketSite(): void {
     bNose.position.set(side * 2.4, 8.75, 0); bNose.castShadow = true; rocket.add(bNose);
   }
 
+  groundRocketMesh = rocket;
   g.add(rocket);
 
   // Infrastructure: Fuel tanks

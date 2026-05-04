@@ -8,7 +8,7 @@ import { player, playerGroup } from './player.js';
 import { carPos } from './car.js';
 import { deer } from './deer.js';
 import { placeWorkbench } from './workbench.js';
-import { placeCageTrap, getCageWorldPos, loadCageIntoCar, unloadCageOnPlanet } from './cage.js';
+import { placeCageTrap, getCageWorldPos, getPlacedEmptyCagePos, pickUpCage, loadCageIntoCar, unloadCageOnPlanet } from './cage.js';
 import { getRocketGroundPos, loadCageIntoRocket, beginRocketFlight, unloadCageFromRocket, getRocketDistanceToDestination } from './rocket.js';
 import { sfxChop, sfxSwing, sfxCraft, initAudio, startDeerYells } from './audio.js';
 import { setActionHint, showMessage, hideMessage, updateHUD } from './ui.js';
@@ -97,6 +97,15 @@ function handleAction(): void {
       }
     } else {
       setActionHint('🚗 Bring the car closer to load the caged deer.');
+    }
+    return;
+  }
+
+  const emptyCagePos = getPlacedEmptyCagePos();
+  if (emptyCagePos && dist2D(px, pz, emptyCagePos.x, emptyCagePos.z) < 2.8) {
+    if (pickUpCage()) {
+      setActionHint('🪤 Cage picked up. Place it somewhere else.');
+      showMessage('🪤 <strong>CAGE PICKED UP</strong><br>Press ' + actionControlName() + ' on open ground to place it again.', 3000);
     }
     return;
   }
@@ -296,7 +305,13 @@ export function updateContextHints(): void {
     return;
   }
 
-  if (gameState.cagePlaced && !gameState.deerCaptured) {
+  const emptyCageHintPos = getPlacedEmptyCagePos();
+  if (emptyCageHintPos) {
+    const d = dist2D(px, pz, emptyCageHintPos.x, emptyCageHintPos.z);
+    if (d < 2.8) {
+      setActionHint(`[${action}] 🪤 Pick up cage trap`);
+      return;
+    }
     setActionHint('🪤 Bait trap placed. Lure the deer into the cage.');
     return;
   }

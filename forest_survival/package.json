@@ -1,7 +1,8 @@
 {
   "scripts": {
     "build": "node build.mjs",
-    "oxnode": "node build.mjs"
+    "oxnode": "node build.mjs",
+    "serve": "npx serve ."
   },
   "devDependencies": {
     "@types/three": "^0.183.1",
