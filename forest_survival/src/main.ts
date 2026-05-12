@@ -43,12 +43,12 @@ if (!savedGame.loaded) {
     `🌲 <strong>FOREST SURVIVAL</strong> 🌲<br><br>
     <em>A vicious deer stalks the woods...<br>also aliens, and zombies from the lab.</em><br><br>
     <b>← → Turn &nbsp;&nbsp; ↑ ↓ Move &nbsp;&nbsp; SPACE Action</b><br>
-    <b>Rocket flight: ← → steer, ↑ thrust, ↓ pitch</b><br>
-    <b>Phone/Tablet: full-screen zones to move/steer, tap for action, VIEW button for car camera</b><br><br>
+    <b>Rocket flight: ← → steer, ↑ thrust, ↓ pitch, V cockpit/chase view</b><br>
+    <b>Phone/Tablet: full-screen zones to move/steer, tap for action, VIEW button for vehicle camera</b><br><br>
     <div id="touch-detect-line" style="font-size:12px;color:#9fd;">Touch detection: checking...</div>
     <button id="touch-manual-enable" class="touch-intro-btn">Enable Touch Controls</button><br><br>
     Chop trees → build workbench → craft pickaxe<br>→ mine ore + wood → craft cage → trap deer<br>
-    → load cage into car → load rocket → fly to another planet → release<br><br>
+    → load cage into car → load rocket → fly into the blue landing beacon → release<br><br>
     🚗 Red car parked in the safe zone for emergencies<br>
     🧟 Zombies invade from the lab at dawn<br>
     👽 Aliens land randomly — car runs them over!<br><br>

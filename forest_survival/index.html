@@ -41,7 +41,13 @@
   #objective div.done { opacity: 0.35; text-decoration: line-through; color: #aaa; }
   #action-hint { position: fixed; bottom: 90px; left: 50%; transform: translateX(-50%); color: #fff; font-size: 13px; text-shadow: 1px 1px 0 #000; background: rgba(0,0,0,0.55); padding: 4px 14px; border: 1px solid #666; white-space: nowrap; }
   #minimap { position: fixed; bottom: 16px; right: 16px; width: 110px; height: 110px; border: 2px solid #555; background: rgba(0,0,0,0.6); overflow: hidden; }
+  #minimap.cockpit-map { border-color: #5df1ff; box-shadow: 0 0 12px rgba(93,241,255,0.55); }
+  #minimap.chase-map { border-color: #ffef9c; }
   #minimap canvas { width: 100%; height: 100%; }
+  #rocket-nav { position: fixed; left: 16px; bottom: 92px; min-width: 176px; display: none; color: #dff; font-size: 12px; line-height: 1.55; text-shadow: 1px 1px 0 #000; background: rgba(2,10,18,0.72); border: 1px solid #5df1ff; padding: 8px 10px; box-shadow: 0 0 12px rgba(93,241,255,0.25); }
+  .rocket-nav-row { display: flex; justify-content: space-between; gap: 14px; }
+  .rocket-nav-row span { color: #8fd8e6; }
+  .rocket-nav-row b { color: #fff; font-weight: bold; }
   #screen-flash { position: fixed; top:0;left:0;width:100%;height:100%; pointer-events:none; opacity:0; z-index:20; transition: opacity 0.1s; }
   #event-banner { position: fixed; top: 76px; left: 50%; transform: translateX(-50%); color: #fff; font-size: 20px; font-weight: bold; text-shadow: 0 0 12px currentColor, 2px 2px 0 #000; background: rgba(0,0,0,0.75); padding: 8px 24px; border: 2px solid #f00; display: none; letter-spacing: 2px; animation: pulse 0.7s infinite alternate; z-index: 25; }
   @keyframes pulse { from { opacity: 1; } to { opacity: 0.6; } }
@@ -55,10 +61,10 @@
   #touch-zones::before { width: 2px; top: 0; bottom: 0; left: 50%; transform: translateX(-50%); }
   #touch-zones::after { height: 2px; left: 0; right: 0; top: 50%; transform: translateY(-50%); }
   .touch-btn { width: 86px; height: 48px; border-radius: 12px; border: 2px solid #86b8ff; background: rgba(8,24,44,0.8); color: #fff; font: inherit; font-size: 12px; text-shadow: 1px 1px 0 #000; touch-action: manipulation; pointer-events: auto; }
-  #touch-view-btn { position: fixed; right: 14px; bottom: 16px; }
+  #touch-view-btn { position: fixed; right: 16px; bottom: 138px; }
   .touch-btn.secondary { border-color: #89ffee; background: rgba(7,35,35,0.8); }
   @media (max-width: 700px) {
-    #touch-view-btn { width: 82px; height: 44px; }
+    #touch-view-btn { width: 88px; height: 44px; bottom: 136px; }
   }
 </style>
 </head>
@@ -90,11 +96,12 @@
     <div id="obj5">🚀 Load rocket → fly to planet → release deer</div>
   </div>
   <div id="action-hint"></div>
+  <div id="rocket-nav"></div>
   <div id="minimap"><canvas id="mm" width="110" height="110"></canvas></div>
   <div id="screen-flash"></div>
 </div>
 <!-- Three.js r128 from CDN — loaded as a global before ES modules execute -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-<script src="dist/bundle.js?v=16f97229ad40"></script>
+<script src="dist/bundle.js?v=f5bc7944a671"></script>
 </body>
 </html>

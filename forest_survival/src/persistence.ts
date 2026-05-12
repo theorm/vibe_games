@@ -58,6 +58,7 @@ const STATE_KEYS = [
   'cageLoadedInRocket',
   'rocketLaunched',
   'inRocket',
+  'rocketCockpitView',
   'onPlanet',
   'hasSword',
   'hasPickaxe',

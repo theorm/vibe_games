@@ -59,6 +59,7 @@
 		cageLoadedInRocket: false,
 		rocketLaunched: false,
 		inRocket: false,
+		rocketCockpitView: false,
 		onPlanet: false,
 		hasSword: false,
 		hasPickaxe: false,
@@ -98,6 +99,9 @@
 			x: 0,
 			z: 560
 		},
+		rocketFlightYaw: Math.PI,
+		rocketFlightPitch: 0,
+		rocketFlightSpeed: 0,
 		workbenchPos: null,
 		onWin: null,
 		onDeath: null
@@ -642,6 +646,38 @@
 	function actionControlName$1() {
 		return gameState.inputProfile === "touch" ? "TAP" : "SPACE";
 	}
+	function normalizeAngle(rad) {
+		return Math.atan2(Math.sin(rad), Math.cos(rad));
+	}
+	function updateRocketNavDisplay() {
+		const nav = document.getElementById("rocket-nav");
+		const viewBtn = document.getElementById("touch-view-btn");
+		const minimap = document.getElementById("minimap");
+		if (!nav || !viewBtn || !minimap) return;
+		if (!gameState.inRocket) {
+			nav.style.display = "none";
+			viewBtn.textContent = "VIEW";
+			minimap.className = "";
+			return;
+		}
+		const dx = gameState.rocketFlightDest.x - gameState.rocketFlightPos.x;
+		const dz = gameState.rocketFlightDest.z - gameState.rocketFlightPos.z;
+		const bearing = normalizeAngle(Math.atan2(-dx, -dz) - gameState.rocketFlightYaw);
+		const turn = Math.abs(bearing) < .16 ? "ON TARGET" : bearing > 0 ? "TURN LEFT" : "TURN RIGHT";
+		const pitch = gameState.rocketFlightPitch > .08 ? "CLIMB" : gameState.rocketFlightPitch < -.08 ? "DIVE" : "LEVEL";
+		const dist = Math.round(Math.hypot(dx, dz));
+		nav.style.display = gameState.rocketCockpitView ? "block" : "none";
+		nav.innerHTML = `
+    <div class="rocket-nav-row"><span>MODE</span><b>${gameState.rocketCockpitView ? "COCKPIT" : "CHASE"}</b></div>
+    <div class="rocket-nav-row"><span>TARGET</span><b>${turn}</b></div>
+    <div class="rocket-nav-row"><span>BEARING</span><b>${Math.round(bearing * 180 / Math.PI)}°</b></div>
+    <div class="rocket-nav-row"><span>BEACON</span><b>${dist}m</b></div>
+    <div class="rocket-nav-row"><span>SPEED</span><b>${Math.round(gameState.rocketFlightSpeed)}m/s</b></div>
+    <div class="rocket-nav-row"><span>PITCH</span><b>${pitch}</b></div>
+  `;
+		viewBtn.textContent = gameState.rocketCockpitView ? "CHASE" : "COCKPIT";
+		minimap.className = gameState.rocketCockpitView ? "cockpit-map" : "chase-map";
+	}
 	function setActionHint(txt) {
 		document.getElementById("action-hint").textContent = txt;
 	}
@@ -685,6 +721,7 @@
 		setTimeout(() => el.remove(), 1200);
 	}
 	function updateHUD(deer, player) {
+		updateRocketNavDisplay();
 		document.getElementById("health-fill").style.width = Math.max(0, gameState.playerHP) + "%";
 		document.getElementById("health-text").textContent = String(Math.ceil(Math.max(0, gameState.playerHP)));
 		document.getElementById("deer-fill").style.width = (gameState.deerCaptured ? 100 : gameState.deerHP) + "%";
@@ -843,6 +880,9 @@
 		if (gameState.inRocket) {
 			ctx.fillStyle = "#060a15";
 			ctx.fillRect(0, 0, S, S);
+			ctx.strokeStyle = gameState.rocketCockpitView ? "#5df1ff" : "#ffef9c";
+			ctx.lineWidth = 4;
+			ctx.strokeRect(2, 2, S - 4, S - 4);
 			ctx.fillStyle = "#9dd5ff";
 			for (let i = 0; i < 32; i++) {
 				const x = i * 37 % S;
@@ -851,13 +891,24 @@
 			}
 			const dx = gameState.rocketFlightDest.x - gameState.rocketFlightPos.x;
 			const dz = gameState.rocketFlightDest.z - gameState.rocketFlightPos.z;
-			const navScale = .12;
-			const tx = Math.max(8, Math.min(S - 8, cx + dx * navScale));
-			const ty = Math.max(8, Math.min(S - 8, cy + dz * navScale));
+			const fwdX = -Math.sin(gameState.rocketFlightYaw);
+			const fwdZ = -Math.cos(gameState.rocketFlightYaw);
+			const rightX = Math.cos(gameState.rocketFlightYaw);
+			const rightZ = -Math.sin(gameState.rocketFlightYaw);
+			const localX = dx * rightX + dz * rightZ;
+			const localForward = dx * fwdX + dz * fwdZ;
+			const navScale = .18;
+			const unclampedTx = cx + localX * navScale;
+			const unclampedTy = cy - localForward * navScale;
+			const tx = Math.max(9, Math.min(S - 9, unclampedTx));
+			const ty = Math.max(9, Math.min(S - 9, unclampedTy));
 			ctx.fillStyle = "#4ac0ff";
 			ctx.beginPath();
 			ctx.arc(tx, ty, 8, 0, Math.PI * 2);
 			ctx.fill();
+			ctx.strokeStyle = "#eaffff";
+			ctx.lineWidth = 1.5;
+			ctx.stroke();
 			ctx.fillStyle = "#ffef9c";
 			ctx.beginPath();
 			ctx.moveTo(cx, cy - 6);
@@ -871,9 +922,15 @@
 			ctx.moveTo(cx, cy);
 			ctx.lineTo(tx, ty);
 			ctx.stroke();
+			ctx.strokeStyle = "#ffffff";
+			ctx.lineWidth = 1;
+			ctx.beginPath();
+			ctx.moveTo(cx, cy - 7);
+			ctx.lineTo(cx, 10);
+			ctx.stroke();
 			ctx.fillStyle = "#fff";
 			ctx.font = "9px \"Courier New\", monospace";
-			ctx.fillText("YOU", cx - 9, cy + 14);
+			ctx.fillText(gameState.rocketCockpitView ? "COCKPIT" : "CHASE", 8, S - 8);
 			ctx.fillText("TARGET", Math.max(2, tx - 14), Math.max(10, ty - 10));
 			return;
 		}
@@ -2640,11 +2697,27 @@
 	const landedRocketGroup = new THREE.Group();
 	landedRocketGroup.visible = false;
 	scene.add(landedRocketGroup);
+	const cockpitFrameGroup = new THREE.Group();
+	cockpitFrameGroup.visible = false;
+	scene.add(cockpitFrameGroup);
+	const LANDING_RADIUS = 36;
 	const rocketPos = new THREE.Vector3(launchPadPos.x, 8, launchPadPos.z);
 	const rocketVel = new THREE.Vector3();
-	const destinationPos = new THREE.Vector3(0, 48, 560);
+	const destinationPos = new THREE.Vector3(0, 22, 560);
 	let rocketYaw = Math.PI;
 	let rocketPitch = 0;
+	function syncRocketFlightState() {
+		gameState.rocketFlightPos.x = rocketPos.x;
+		gameState.rocketFlightPos.z = rocketPos.z;
+		gameState.rocketFlightDest.x = destinationPos.x;
+		gameState.rocketFlightDest.z = destinationPos.z;
+		gameState.rocketFlightYaw = rocketYaw;
+		gameState.rocketFlightPitch = rocketPitch;
+		gameState.rocketFlightSpeed = rocketVel.length();
+	}
+	function getHorizontalDistanceToDestination() {
+		return Math.hypot(destinationPos.x - rocketPos.x, destinationPos.z - rocketPos.z);
+	}
 	function buildSimpleRocket(scale = 1) {
 		const g = new THREE.Group();
 		const hull = new THREE.MeshStandardMaterial({
@@ -2684,6 +2757,55 @@
 		g.add(nozzle);
 		return g;
 	}
+	function buildCockpitFrame() {
+		const glass = new THREE.MeshBasicMaterial({
+			color: 1759487,
+			transparent: true,
+			opacity: .12,
+			side: THREE.DoubleSide,
+			depthWrite: false
+		});
+		const frame = new THREE.MeshBasicMaterial({
+			color: 1054754,
+			depthWrite: false
+		});
+		const glow = new THREE.MeshBasicMaterial({
+			color: 6156799,
+			depthWrite: false
+		});
+		const amber = new THREE.MeshBasicMaterial({
+			color: 16757575,
+			depthWrite: false
+		});
+		const canopy = new THREE.Mesh(new THREE.RingGeometry(.78, .86, 32), frame);
+		canopy.position.set(0, 0, -1.35);
+		cockpitFrameGroup.add(canopy);
+		const pane = new THREE.Mesh(new THREE.CircleGeometry(.76, 32), glass);
+		pane.position.set(0, 0, -1.36);
+		cockpitFrameGroup.add(pane);
+		for (const x of [-.62, .62]) {
+			const strut = new THREE.Mesh(new THREE.BoxGeometry(.055, 1.45, .035), frame);
+			strut.position.set(x, .02, -1.32);
+			strut.rotation.z = -x * .28;
+			cockpitFrameGroup.add(strut);
+		}
+		const dash = new THREE.Mesh(new THREE.BoxGeometry(1.8, .34, .12), frame);
+		dash.position.set(0, -.72, -1.04);
+		dash.rotation.x = -.18;
+		cockpitFrameGroup.add(dash);
+		const scope = new THREE.Mesh(new THREE.TorusGeometry(.12, .01, 8, 24), glow);
+		scope.position.set(0, -.18, -1.18);
+		cockpitFrameGroup.add(scope);
+		for (let i = 0; i < 5; i++) {
+			const light = new THREE.Mesh(new THREE.BoxGeometry(.12, .035, .012), i % 2 === 0 ? glow : amber);
+			light.position.set(-.42 + i * .21, -.66, -.96);
+			cockpitFrameGroup.add(light);
+		}
+		cockpitFrameGroup.renderOrder = 20;
+		cockpitFrameGroup.traverse((obj) => {
+			obj.renderOrder = 20;
+		});
+	}
 	function buildSpaceBackdrop() {
 		const stars = new THREE.Group();
 		const starMat = new THREE.MeshBasicMaterial({ color: 15267583 });
@@ -2693,18 +2815,51 @@
 			stars.add(s);
 		}
 		spaceBackdrop.add(stars);
-		const targetPlanet = new THREE.Mesh(new THREE.SphereGeometry(16, 24, 24), new THREE.MeshStandardMaterial({
+		const beaconMat = new THREE.MeshBasicMaterial({
+			color: 8254719,
+			transparent: true,
+			opacity: .78,
+			side: THREE.DoubleSide
+		});
+		const haloMat = new THREE.MeshBasicMaterial({
+			color: 4899071,
+			transparent: true,
+			opacity: .25,
+			side: THREE.DoubleSide
+		});
+		const targetPlanet = new THREE.Mesh(new THREE.SphereGeometry(26, 32, 32), new THREE.MeshStandardMaterial({
 			color: 6997247,
-			emissive: 1456224,
-			emissiveIntensity: .55,
-			roughness: .9
+			emissive: 2383770,
+			emissiveIntensity: .85,
+			roughness: .86
 		}));
 		targetPlanet.position.copy(destinationPos);
 		spaceBackdrop.add(targetPlanet);
-		const ring = new THREE.Mesh(new THREE.TorusGeometry(24, 1.2, 12, 64), new THREE.MeshBasicMaterial({ color: 11132669 }));
+		const ring = new THREE.Mesh(new THREE.TorusGeometry(38, 1.7, 12, 80), new THREE.MeshBasicMaterial({ color: 11132669 }));
 		ring.rotation.x = 1.05;
 		ring.position.copy(destinationPos);
 		spaceBackdrop.add(ring);
+		const landingHalo = new THREE.Mesh(new THREE.RingGeometry(LANDING_RADIUS - 5, LANDING_RADIUS + 5, 72), haloMat);
+		landingHalo.rotation.x = -Math.PI / 2;
+		landingHalo.position.set(destinationPos.x, 8.2, destinationPos.z);
+		spaceBackdrop.add(landingHalo);
+		for (let i = 0; i < 5; i++) {
+			const guideRing = new THREE.Mesh(new THREE.TorusGeometry(11 + i * 5.5, .35, 8, 56), beaconMat);
+			guideRing.rotation.x = Math.PI / 2;
+			guideRing.position.set(destinationPos.x, 10 + i * 8, destinationPos.z);
+			spaceBackdrop.add(guideRing);
+		}
+		const beaconCore = new THREE.Mesh(new THREE.CylinderGeometry(.55, .55, 62, 12, 1, true), new THREE.MeshBasicMaterial({
+			color: 9436415,
+			transparent: true,
+			opacity: .28,
+			side: THREE.DoubleSide
+		}));
+		beaconCore.position.set(destinationPos.x, 30, destinationPos.z);
+		spaceBackdrop.add(beaconCore);
+		const beaconLight = new THREE.PointLight(8254719, 1.2, 180);
+		beaconLight.position.copy(destinationPos);
+		spaceBackdrop.add(beaconLight);
 	}
 	function buildPlanetWorld() {
 		const terrain = new THREE.Mesh(new THREE.CircleGeometry(36, 40), new THREE.MeshStandardMaterial({
@@ -2739,6 +2894,7 @@
 	}
 	function initRocketWorlds() {
 		spaceFlightGroup.add(buildSimpleRocket(1.2));
+		buildCockpitFrame();
 		buildSpaceBackdrop();
 		buildPlanetWorld();
 		landedRocketGroup.add(buildSimpleRocket(.9));
@@ -2760,10 +2916,7 @@
 		rocketVel.set(0, 0, 0);
 		rocketYaw = saved.yaw ?? Math.PI;
 		rocketPitch = saved.pitch ?? .1;
-		gameState.rocketFlightPos.x = rocketPos.x;
-		gameState.rocketFlightPos.z = rocketPos.z;
-		gameState.rocketFlightDest.x = destinationPos.x;
-		gameState.rocketFlightDest.z = destinationPos.z;
+		syncRocketFlightState();
 		spaceFlightGroup.position.copy(rocketPos);
 		spaceFlightGroup.rotation.set(-rocketPitch, rocketYaw + Math.PI, 0);
 	}
@@ -2772,6 +2925,7 @@
 			hideGroundRocket();
 			spaceFlightGroup.visible = true;
 			spaceBackdrop.visible = true;
+			cockpitFrameGroup.visible = gameState.rocketCockpitView;
 			planetWorldGroup.visible = false;
 			landedRocketGroup.visible = false;
 			playerGroup.visible = false;
@@ -2779,6 +2933,7 @@
 		}
 		spaceFlightGroup.visible = false;
 		spaceBackdrop.visible = false;
+		cockpitFrameGroup.visible = false;
 		if (gameState.onPlanet) {
 			hideGroundRocket();
 			planetWorldGroup.visible = true;
@@ -2803,6 +2958,7 @@
 		gameState.inCar = false;
 		gameState.driverView = false;
 		gameState.inRocket = true;
+		gameState.rocketCockpitView = true;
 		gameState.rocketLaunched = true;
 		gameState.onPlanet = false;
 		playerGroup.visible = false;
@@ -2810,23 +2966,22 @@
 		rocketVel.set(0, 0, 0);
 		rocketYaw = Math.PI;
 		rocketPitch = .1;
-		gameState.rocketFlightPos.x = rocketPos.x;
-		gameState.rocketFlightPos.z = rocketPos.z;
-		gameState.rocketFlightDest.x = destinationPos.x;
-		gameState.rocketFlightDest.z = destinationPos.z;
+		syncRocketFlightState();
 		hideGroundRocket();
 		spaceFlightGroup.visible = true;
 		spaceBackdrop.visible = true;
 		landedRocketGroup.visible = false;
 		planetWorldGroup.visible = false;
-		showMessage("🚀 <strong>ROCKET FLIGHT ACTIVE</strong><br>Use ← → to steer, ↑ to thrust, ↓ to pitch down.<br>Fly to the glowing planet marker.", 6e3);
+		showMessage("🚀 <strong>ROCKET FLIGHT ACTIVE</strong><br>Cockpit view engaged. Use ← → to steer, ↑ to thrust, ↓ to pitch down.<br>Press V/VIEW to switch views. Enter the blue landing beacon to land.", 6500);
 		return true;
 	}
 	function arriveAtPlanet() {
 		gameState.inRocket = false;
+		gameState.rocketCockpitView = false;
 		gameState.onPlanet = true;
 		spaceFlightGroup.visible = false;
 		spaceBackdrop.visible = false;
+		cockpitFrameGroup.visible = false;
 		planetWorldGroup.visible = true;
 		landedRocketGroup.visible = true;
 		player.pos.set(planetLandingPos.x + 4.6, 0, planetLandingPos.z + 1.2);
@@ -2852,15 +3007,20 @@
 		const fwd = new THREE.Vector3(-Math.sin(rocketYaw) * cosP, Math.sin(rocketPitch), -Math.cos(rocketYaw) * cosP);
 		rocketVel.addScaledVector(fwd, thrust * dt);
 		rocketPos.addScaledVector(rocketVel, dt);
-		gameState.rocketFlightPos.x = rocketPos.x;
-		gameState.rocketFlightPos.z = rocketPos.z;
 		if (rocketPos.y < 8) {
 			rocketPos.y = 8;
 			if (rocketVel.y < 0) rocketVel.y *= -.2;
 		}
+		syncRocketFlightState();
 		spaceFlightGroup.position.copy(rocketPos);
 		spaceFlightGroup.rotation.set(-rocketPitch, rocketYaw + Math.PI, 0);
-		if (rocketPos.distanceTo(destinationPos) < 28) arriveAtPlanet();
+		if (getHorizontalDistanceToDestination() < LANDING_RADIUS) arriveAtPlanet();
+	}
+	function syncRocketCockpitFrame(cameraRef, visible) {
+		cockpitFrameGroup.visible = visible && gameState.inRocket;
+		if (!cockpitFrameGroup.visible) return;
+		cockpitFrameGroup.position.copy(cameraRef.position);
+		cockpitFrameGroup.quaternion.copy(cameraRef.quaternion);
 	}
 	function updateRocketWorldAtmosphere() {
 		if (gameState.inRocket) {
@@ -3028,11 +3188,14 @@
 			const fwdX = -Math.sin(pose.yaw) * cosP;
 			const fwdY = Math.sin(pose.pitch);
 			const fwdZ = -Math.cos(pose.yaw) * cosP;
-			camera.position.set(pose.pos.x + Math.sin(pose.yaw) * 9, pose.pos.y + 4.5, pose.pos.z + Math.cos(pose.yaw) * 9);
+			if (gameState.rocketCockpitView) camera.position.set(pose.pos.x + fwdX * 2.1, pose.pos.y + 2.15 + fwdY * 1.2, pose.pos.z + fwdZ * 2.1);
+			else camera.position.set(pose.pos.x + Math.sin(pose.yaw) * 9, pose.pos.y + 4.5, pose.pos.z + Math.cos(pose.yaw) * 9);
 			camera.lookAt(pose.pos.x + fwdX * 26, pose.pos.y + fwdY * 26, pose.pos.z + fwdZ * 26);
+			syncRocketCockpitFrame(camera, gameState.rocketCockpitView);
 			updateAudioListener(camera.position.x, camera.position.y, camera.position.z, fwdX, fwdY, fwdZ);
 			return;
 		}
+		syncRocketCockpitFrame(camera, false);
 		const pivot = gameState.inCar ? carPos : player.pos;
 		const facing = gameState.inCar ? gameState.carFacing : player.facing;
 		if (gameState.inCar && gameState.driverView) {
@@ -3217,10 +3380,15 @@
 	function setDrivingHint() {
 		setActionHint(`🚗 Driving! ${gameState.inputProfile === "touch" ? "screen zones drive + steer" : "↑↓ accelerate, ←→ steer"}, ${cameraControlName()} camera, ${actionControlName()} exit.`);
 	}
-	function toggleCarCameraView() {
+	function toggleVehicleCameraView() {
 		if (!gameState.inCar && !gameState.inRocket) return;
 		if (gameState.inRocket) {
-			setActionHint("🚀 Rocket view is fixed during flight.");
+			gameState.rocketCockpitView = !gameState.rocketCockpitView;
+			if (gameState.inputProfile === "touch") {
+				setActionHint(gameState.rocketCockpitView ? "🚀 Cockpit view active — tap VIEW for chase view" : "🚀 Chase view active — tap VIEW for cockpit view");
+				return;
+			}
+			setActionHint(gameState.rocketCockpitView ? "🚀 Cockpit view — press V for chase view" : "🚀 Chase view — press V for cockpit view");
 			return;
 		}
 		gameState.driverView = !gameState.driverView;
@@ -3432,7 +3600,7 @@
 				e.preventDefault();
 				handleAction();
 			}
-			if (e.key === "v" || e.key === "V") toggleCarCameraView();
+			if (e.key === "v" || e.key === "V") toggleVehicleCameraView();
 			if (e.key === "Escape") hideMessage();
 		});
 		window.addEventListener("keyup", (e) => {
@@ -3441,7 +3609,7 @@
 		initTouchControls({
 			onStart: startGameFromInput,
 			onAction: handleAction,
-			onToggleCamera: toggleCarCameraView
+			onToggleCamera: toggleVehicleCameraView
 		});
 		const detection = getTouchDetectionInfo();
 		if (isTouchControlsEnabled()) setTouchInfo(`Touch detected (${detection.maxTouchPoints} points): controls enabled.`);
@@ -3488,6 +3656,7 @@
 		"cageLoadedInRocket",
 		"rocketLaunched",
 		"inRocket",
+		"rocketCockpitView",
 		"onPlanet",
 		"hasSword",
 		"hasPickaxe",
@@ -3700,12 +3869,12 @@
 	if (!savedGame.loaded) showMessage(`🌲 <strong>FOREST SURVIVAL</strong> 🌲<br><br>
     <em>A vicious deer stalks the woods...<br>also aliens, and zombies from the lab.</em><br><br>
     <b>← → Turn &nbsp;&nbsp; ↑ ↓ Move &nbsp;&nbsp; SPACE Action</b><br>
-    <b>Rocket flight: ← → steer, ↑ thrust, ↓ pitch</b><br>
-    <b>Phone/Tablet: full-screen zones to move/steer, tap for action, VIEW button for car camera</b><br><br>
+    <b>Rocket flight: ← → steer, ↑ thrust, ↓ pitch, V cockpit/chase view</b><br>
+    <b>Phone/Tablet: full-screen zones to move/steer, tap for action, VIEW button for vehicle camera</b><br><br>
     <div id="touch-detect-line" style="font-size:12px;color:#9fd;">Touch detection: checking...</div>
     <button id="touch-manual-enable" class="touch-intro-btn">Enable Touch Controls</button><br><br>
     Chop trees → build workbench → craft pickaxe<br>→ mine ore + wood → craft cage → trap deer<br>
-    → load cage into car → load rocket → fly to another planet → release<br><br>
+    → load cage into car → load rocket → fly into the blue landing beacon → release<br><br>
     🚗 Red car parked in the safe zone for emergencies<br>
     🧟 Zombies invade from the lab at dawn<br>
     👽 Aliens land randomly — car runs them over!<br><br>

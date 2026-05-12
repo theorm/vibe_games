@@ -242,3 +242,15 @@ Persistent save and reset flow:
 - Reloading the page now restores a saved run and resumes play instead of always starting from scratch.
 - Added a `Reset Game` button that clears the saved slot and reloads into a fresh game.
 - Updated win/death messaging to point players to the reset button instead of browser reload.
+
+# v.24
+
+Rocket cockpit navigation:
+
+- Rocket flight now starts in a cockpit view by default, giving the player a first-person navigation perspective.
+- The existing camera control now works in flight: press `V` or tap `VIEW` to switch between cockpit and chase camera.
+- Added a lightweight cockpit canopy, dashboard, and reticle frame that follows the flight camera while piloting.
+- Persisted the active rocket view mode so saved in-flight sessions restore the same camera perspective.
+- Added cockpit navigation instruments, rotating flight radar, dynamic `VIEW`/`CHASE` button labeling, and camera-mode map styling so steering feedback is visible while piloting.
+- Moved the touch camera button above the minimap so it no longer covers or appears to control the radar.
+- Replaced the hard-to-hit 3D destination check with a horizontal landing-zone trigger, made the target planet larger/lower, and added a bright blue landing beacon that automatically lands the rocket when entered.

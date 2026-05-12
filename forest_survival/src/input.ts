@@ -34,10 +34,19 @@ function setDrivingHint(): void {
   setActionHint(`🚗 Driving! ${movement}, ${cameraControlName()} camera, ${actionControlName()} exit.`);
 }
 
-function toggleCarCameraView(): void {
+function toggleVehicleCameraView(): void {
   if (!gameState.inCar && !gameState.inRocket) return;
   if (gameState.inRocket) {
-    setActionHint('🚀 Rocket view is fixed during flight.');
+    gameState.rocketCockpitView = !gameState.rocketCockpitView;
+    if (gameState.inputProfile === 'touch') {
+      setActionHint(gameState.rocketCockpitView
+        ? '🚀 Cockpit view active — tap VIEW for chase view'
+        : '🚀 Chase view active — tap VIEW for cockpit view');
+      return;
+    }
+    setActionHint(gameState.rocketCockpitView
+      ? '🚀 Cockpit view — press V for chase view'
+      : '🚀 Chase view — press V for cockpit view');
     return;
   }
   gameState.driverView = !gameState.driverView;
@@ -253,7 +262,10 @@ export function updateContextHints(): void {
   if (gameState.gameOver || gameState.gameWon) return;
   if (gameState.inRocket) {
     const dist = Math.round(getRocketDistanceToDestination());
-    setActionHint(`🚀 Pilot rocket: ← → steer, ↑ thrust, ↓ pitch | Destination: ${dist}m`);
+    const view = gameState.inputProfile === 'touch'
+      ? 'VIEW camera'
+      : 'V camera';
+    setActionHint(`🚀 Pilot rocket: ← → steer, ↑ thrust, ↓ pitch, ${view} | Landing beacon: ${dist}m`);
     return;
   }
   if (gameState.inCar) {
@@ -368,7 +380,7 @@ export function initInput(onFirstKey: () => void): void {
     keys[e.key] = true;
     startGameFromInput();
     if (e.key === ' ') { e.preventDefault(); handleAction(); }
-    if (e.key === 'v' || e.key === 'V') toggleCarCameraView();
+    if (e.key === 'v' || e.key === 'V') toggleVehicleCameraView();
     if (e.key === 'Escape') hideMessage();
   });
   window.addEventListener('keyup', e => { keys[e.key] = false; });
@@ -376,7 +388,7 @@ export function initInput(onFirstKey: () => void): void {
   initTouchControls({
     onStart: startGameFromInput,
     onAction: handleAction,
-    onToggleCamera: toggleCarCameraView,
+    onToggleCamera: toggleVehicleCameraView,
   });
 
   const detection = getTouchDetectionInfo();

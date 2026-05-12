@@ -27,11 +27,30 @@ const landedRocketGroup = new THREE.Group();
 landedRocketGroup.visible = false;
 scene.add(landedRocketGroup);
 
+const cockpitFrameGroup = new THREE.Group();
+cockpitFrameGroup.visible = false;
+scene.add(cockpitFrameGroup);
+
+const LANDING_RADIUS = 36;
 const rocketPos = new THREE.Vector3(launchPadPos.x, 8, launchPadPos.z);
 const rocketVel = new THREE.Vector3();
-const destinationPos = new THREE.Vector3(0, 48, 560);
+const destinationPos = new THREE.Vector3(0, 22, 560);
 let rocketYaw = Math.PI;
 let rocketPitch = 0;
+
+function syncRocketFlightState(): void {
+  gameState.rocketFlightPos.x = rocketPos.x;
+  gameState.rocketFlightPos.z = rocketPos.z;
+  gameState.rocketFlightDest.x = destinationPos.x;
+  gameState.rocketFlightDest.z = destinationPos.z;
+  gameState.rocketFlightYaw = rocketYaw;
+  gameState.rocketFlightPitch = rocketPitch;
+  gameState.rocketFlightSpeed = rocketVel.length();
+}
+
+function getHorizontalDistanceToDestination(): number {
+  return Math.hypot(destinationPos.x - rocketPos.x, destinationPos.z - rocketPos.z);
+}
 
 function buildSimpleRocket(scale = 1): import('three').Group {
   const g = new THREE.Group();
@@ -65,6 +84,52 @@ function buildSimpleRocket(scale = 1): import('three').Group {
   return g;
 }
 
+function buildCockpitFrame(): void {
+  const glass = new THREE.MeshBasicMaterial({
+    color: 0x1ad8ff,
+    transparent: true,
+    opacity: 0.12,
+    side: THREE.DoubleSide,
+    depthWrite: false,
+  });
+  const frame = new THREE.MeshBasicMaterial({ color: 0x101822, depthWrite: false });
+  const glow = new THREE.MeshBasicMaterial({ color: 0x5df1ff, depthWrite: false });
+  const amber = new THREE.MeshBasicMaterial({ color: 0xffb347, depthWrite: false });
+
+  const canopy = new THREE.Mesh(new THREE.RingGeometry(0.78, 0.86, 32), frame);
+  canopy.position.set(0, 0, -1.35);
+  cockpitFrameGroup.add(canopy);
+
+  const pane = new THREE.Mesh(new THREE.CircleGeometry(0.76, 32), glass);
+  pane.position.set(0, 0, -1.36);
+  cockpitFrameGroup.add(pane);
+
+  for (const x of [-0.62, 0.62]) {
+    const strut = new THREE.Mesh(new THREE.BoxGeometry(0.055, 1.45, 0.035), frame);
+    strut.position.set(x, 0.02, -1.32);
+    strut.rotation.z = -x * 0.28;
+    cockpitFrameGroup.add(strut);
+  }
+
+  const dash = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.34, 0.12), frame);
+  dash.position.set(0, -0.72, -1.04);
+  dash.rotation.x = -0.18;
+  cockpitFrameGroup.add(dash);
+
+  const scope = new THREE.Mesh(new THREE.TorusGeometry(0.12, 0.01, 8, 24), glow);
+  scope.position.set(0, -0.18, -1.18);
+  cockpitFrameGroup.add(scope);
+
+  for (let i = 0; i < 5; i++) {
+    const light = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.035, 0.012), i % 2 === 0 ? glow : amber);
+    light.position.set(-0.42 + i * 0.21, -0.66, -0.96);
+    cockpitFrameGroup.add(light);
+  }
+
+  cockpitFrameGroup.renderOrder = 20;
+  cockpitFrameGroup.traverse(obj => { obj.renderOrder = 20; });
+}
+
 function buildSpaceBackdrop(): void {
   const stars = new THREE.Group();
   const starMat = new THREE.MeshBasicMaterial({ color: 0xe8f6ff });
@@ -75,20 +140,61 @@ function buildSpaceBackdrop(): void {
   }
   spaceBackdrop.add(stars);
 
+  const beaconMat = new THREE.MeshBasicMaterial({
+    color: 0x7df4ff,
+    transparent: true,
+    opacity: 0.78,
+    side: THREE.DoubleSide,
+  });
+  const haloMat = new THREE.MeshBasicMaterial({
+    color: 0x4ac0ff,
+    transparent: true,
+    opacity: 0.25,
+    side: THREE.DoubleSide,
+  });
+
   const targetPlanet = new THREE.Mesh(
-    new THREE.SphereGeometry(16, 24, 24),
-    new THREE.MeshStandardMaterial({ color: 0x6ac4ff, emissive: 0x163860, emissiveIntensity: 0.55, roughness: 0.9 })
+    new THREE.SphereGeometry(26, 32, 32),
+    new THREE.MeshStandardMaterial({
+      color: 0x6ac4ff,
+      emissive: 0x245f9a,
+      emissiveIntensity: 0.85,
+      roughness: 0.86,
+    })
   );
   targetPlanet.position.copy(destinationPos);
   spaceBackdrop.add(targetPlanet);
 
   const ring = new THREE.Mesh(
-    new THREE.TorusGeometry(24, 1.2, 12, 64),
+    new THREE.TorusGeometry(38, 1.7, 12, 80),
     new THREE.MeshBasicMaterial({ color: 0xa9defd })
   );
   ring.rotation.x = 1.05;
   ring.position.copy(destinationPos);
   spaceBackdrop.add(ring);
+
+  const landingHalo = new THREE.Mesh(new THREE.RingGeometry(LANDING_RADIUS - 5, LANDING_RADIUS + 5, 72), haloMat);
+  landingHalo.rotation.x = -Math.PI / 2;
+  landingHalo.position.set(destinationPos.x, 8.2, destinationPos.z);
+  spaceBackdrop.add(landingHalo);
+
+  for (let i = 0; i < 5; i++) {
+    const guideRing = new THREE.Mesh(new THREE.TorusGeometry(11 + i * 5.5, 0.35, 8, 56), beaconMat);
+    guideRing.rotation.x = Math.PI / 2;
+    guideRing.position.set(destinationPos.x, 10 + i * 8, destinationPos.z);
+    spaceBackdrop.add(guideRing);
+  }
+
+  const beaconCore = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.55, 0.55, 62, 12, 1, true),
+    new THREE.MeshBasicMaterial({ color: 0x8ffcff, transparent: true, opacity: 0.28, side: THREE.DoubleSide })
+  );
+  beaconCore.position.set(destinationPos.x, 30, destinationPos.z);
+  spaceBackdrop.add(beaconCore);
+
+  const beaconLight = new THREE.PointLight(0x7df4ff, 1.2, 180);
+  beaconLight.position.copy(destinationPos);
+  spaceBackdrop.add(beaconLight);
 }
 
 function buildPlanetWorld(): void {
@@ -129,6 +235,7 @@ function buildPlanetWorld(): void {
 
 export function initRocketWorlds(): void {
   spaceFlightGroup.add(buildSimpleRocket(1.2));
+  buildCockpitFrame();
   buildSpaceBackdrop();
   buildPlanetWorld();
 
@@ -158,10 +265,7 @@ export function restoreRocketFlightPose(saved: {
   rocketVel.set(0, 0, 0);
   rocketYaw = saved.yaw ?? Math.PI;
   rocketPitch = saved.pitch ?? 0.1;
-  gameState.rocketFlightPos.x = rocketPos.x;
-  gameState.rocketFlightPos.z = rocketPos.z;
-  gameState.rocketFlightDest.x = destinationPos.x;
-  gameState.rocketFlightDest.z = destinationPos.z;
+  syncRocketFlightState();
 
   spaceFlightGroup.position.copy(rocketPos);
   spaceFlightGroup.rotation.set(-rocketPitch, rocketYaw + Math.PI, 0);
@@ -172,6 +276,7 @@ export function syncRocketVisualsToState(): void {
     hideGroundRocket();
     spaceFlightGroup.visible = true;
     spaceBackdrop.visible = true;
+    cockpitFrameGroup.visible = gameState.rocketCockpitView;
     planetWorldGroup.visible = false;
     landedRocketGroup.visible = false;
     playerGroup.visible = false;
@@ -180,6 +285,7 @@ export function syncRocketVisualsToState(): void {
 
   spaceFlightGroup.visible = false;
   spaceBackdrop.visible = false;
+  cockpitFrameGroup.visible = false;
 
   if (gameState.onPlanet) {
     hideGroundRocket();
@@ -195,7 +301,7 @@ export function syncRocketVisualsToState(): void {
 }
 
 export function getRocketDistanceToDestination(): number {
-  return rocketPos.distanceTo(destinationPos);
+  return getHorizontalDistanceToDestination();
 }
 
 export function loadCageIntoRocket(): boolean {
@@ -213,6 +319,7 @@ export function beginRocketFlight(): boolean {
   gameState.inCar = false;
   gameState.driverView = false;
   gameState.inRocket = true;
+  gameState.rocketCockpitView = true;
   gameState.rocketLaunched = true;
   gameState.onPlanet = false;
 
@@ -222,10 +329,7 @@ export function beginRocketFlight(): boolean {
   rocketVel.set(0, 0, 0);
   rocketYaw = Math.PI;
   rocketPitch = 0.1;
-  gameState.rocketFlightPos.x = rocketPos.x;
-  gameState.rocketFlightPos.z = rocketPos.z;
-  gameState.rocketFlightDest.x = destinationPos.x;
-  gameState.rocketFlightDest.z = destinationPos.z;
+  syncRocketFlightState();
 
   hideGroundRocket();
   spaceFlightGroup.visible = true;
@@ -233,16 +337,18 @@ export function beginRocketFlight(): boolean {
   landedRocketGroup.visible = false;
   planetWorldGroup.visible = false;
 
-  showMessage('🚀 <strong>ROCKET FLIGHT ACTIVE</strong><br>Use ← → to steer, ↑ to thrust, ↓ to pitch down.<br>Fly to the glowing planet marker.', 6000);
+  showMessage('🚀 <strong>ROCKET FLIGHT ACTIVE</strong><br>Cockpit view engaged. Use ← → to steer, ↑ to thrust, ↓ to pitch down.<br>Press V/VIEW to switch views. Enter the blue landing beacon to land.', 6500);
   return true;
 }
 
 function arriveAtPlanet(): void {
   gameState.inRocket = false;
+  gameState.rocketCockpitView = false;
   gameState.onPlanet = true;
 
   spaceFlightGroup.visible = false;
   spaceBackdrop.visible = false;
+  cockpitFrameGroup.visible = false;
   planetWorldGroup.visible = true;
   landedRocketGroup.visible = true;
 
@@ -277,20 +383,30 @@ export function updateRocketFlight(dt: number): void {
   );
   rocketVel.addScaledVector(fwd, thrust * dt);
   rocketPos.addScaledVector(rocketVel, dt);
-  gameState.rocketFlightPos.x = rocketPos.x;
-  gameState.rocketFlightPos.z = rocketPos.z;
 
   if (rocketPos.y < 8) {
     rocketPos.y = 8;
     if (rocketVel.y < 0) rocketVel.y *= -0.2;
   }
+  syncRocketFlightState();
 
   spaceFlightGroup.position.copy(rocketPos);
   spaceFlightGroup.rotation.set(-rocketPitch, rocketYaw + Math.PI, 0);
 
-  if (rocketPos.distanceTo(destinationPos) < 28) {
+  if (getHorizontalDistanceToDestination() < LANDING_RADIUS) {
     arriveAtPlanet();
   }
+}
+
+export function syncRocketCockpitFrame(
+  cameraRef: import('three').PerspectiveCamera,
+  visible: boolean
+): void {
+  cockpitFrameGroup.visible = visible && gameState.inRocket;
+  if (!cockpitFrameGroup.visible) return;
+
+  cockpitFrameGroup.position.copy(cameraRef.position);
+  cockpitFrameGroup.quaternion.copy(cameraRef.quaternion);
 }
 
 export function updateRocketWorldAtmosphere(): void {

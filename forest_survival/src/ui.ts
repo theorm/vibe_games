@@ -6,6 +6,45 @@ function actionControlName(): string {
   return gameState.inputProfile === 'touch' ? 'TAP' : 'SPACE';
 }
 
+function normalizeAngle(rad: number): number {
+  return Math.atan2(Math.sin(rad), Math.cos(rad));
+}
+
+function updateRocketNavDisplay(): void {
+  const nav = document.getElementById('rocket-nav');
+  const viewBtn = document.getElementById('touch-view-btn');
+  const minimap = document.getElementById('minimap');
+  if (!nav || !viewBtn || !minimap) return;
+
+  if (!gameState.inRocket) {
+    nav.style.display = 'none';
+    viewBtn.textContent = 'VIEW';
+    minimap.className = '';
+    return;
+  }
+
+  const dx = gameState.rocketFlightDest.x - gameState.rocketFlightPos.x;
+  const dz = gameState.rocketFlightDest.z - gameState.rocketFlightPos.z;
+  const targetYaw = Math.atan2(-dx, -dz);
+  const bearing = normalizeAngle(targetYaw - gameState.rocketFlightYaw);
+  const turn = Math.abs(bearing) < 0.16 ? 'ON TARGET' : bearing > 0 ? 'TURN LEFT' : 'TURN RIGHT';
+  const pitch = gameState.rocketFlightPitch > 0.08 ? 'CLIMB' : gameState.rocketFlightPitch < -0.08 ? 'DIVE' : 'LEVEL';
+  const dist = Math.round(Math.hypot(dx, dz));
+
+  nav.style.display = gameState.rocketCockpitView ? 'block' : 'none';
+  nav.innerHTML = `
+    <div class="rocket-nav-row"><span>MODE</span><b>${gameState.rocketCockpitView ? 'COCKPIT' : 'CHASE'}</b></div>
+    <div class="rocket-nav-row"><span>TARGET</span><b>${turn}</b></div>
+    <div class="rocket-nav-row"><span>BEARING</span><b>${Math.round(bearing * 180 / Math.PI)}°</b></div>
+    <div class="rocket-nav-row"><span>BEACON</span><b>${dist}m</b></div>
+    <div class="rocket-nav-row"><span>SPEED</span><b>${Math.round(gameState.rocketFlightSpeed)}m/s</b></div>
+    <div class="rocket-nav-row"><span>PITCH</span><b>${pitch}</b></div>
+  `;
+
+  viewBtn.textContent = gameState.rocketCockpitView ? 'CHASE' : 'COCKPIT';
+  minimap.className = gameState.rocketCockpitView ? 'cockpit-map' : 'chase-map';
+}
+
 export function setActionHint(txt: string): void {
   document.getElementById('action-hint')!.textContent = txt;
 }
@@ -42,6 +81,7 @@ export function showFloatingText(txt: string): void {
 }
 
 export function updateHUD(deer: { hp: number }, player: { pos: any }): void {
+  updateRocketNavDisplay();
   document.getElementById('health-fill')!.style.width = Math.max(0, gameState.playerHP) + '%';
   document.getElementById('health-text')!.textContent = String(Math.ceil(Math.max(0, gameState.playerHP)));
   document.getElementById('deer-fill')!.style.width   = (gameState.deerCaptured ? 100 : gameState.deerHP) + '%';
@@ -142,6 +182,9 @@ export function updateMinimap(playerPos: any, carPos: any, deerPos: any, deerAli
   if (gameState.inRocket) {
     ctx.fillStyle = '#060a15';
     ctx.fillRect(0, 0, S, S);
+    ctx.strokeStyle = gameState.rocketCockpitView ? '#5df1ff' : '#ffef9c';
+    ctx.lineWidth = 4;
+    ctx.strokeRect(2, 2, S - 4, S - 4);
     ctx.fillStyle = '#9dd5ff';
     for (let i = 0; i < 32; i++) {
       const x = (i * 37) % S;
@@ -151,15 +194,26 @@ export function updateMinimap(playerPos: any, carPos: any, deerPos: any, deerAli
 
     const dx = gameState.rocketFlightDest.x - gameState.rocketFlightPos.x;
     const dz = gameState.rocketFlightDest.z - gameState.rocketFlightPos.z;
-    const navScale = 0.12;
-    const tx = Math.max(8, Math.min(S - 8, cx + dx * navScale));
-    const ty = Math.max(8, Math.min(S - 8, cy + dz * navScale));
+    const fwdX = -Math.sin(gameState.rocketFlightYaw);
+    const fwdZ = -Math.cos(gameState.rocketFlightYaw);
+    const rightX = Math.cos(gameState.rocketFlightYaw);
+    const rightZ = -Math.sin(gameState.rocketFlightYaw);
+    const localX = dx * rightX + dz * rightZ;
+    const localForward = dx * fwdX + dz * fwdZ;
+    const navScale = 0.18;
+    const unclampedTx = cx + localX * navScale;
+    const unclampedTy = cy - localForward * navScale;
+    const tx = Math.max(9, Math.min(S - 9, unclampedTx));
+    const ty = Math.max(9, Math.min(S - 9, unclampedTy));
 
     // Destination marker
     ctx.fillStyle = '#4ac0ff';
     ctx.beginPath();
     ctx.arc(tx, ty, 8, 0, Math.PI * 2);
     ctx.fill();
+    ctx.strokeStyle = '#eaffff';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
 
     // Rocket marker (centered local radar frame)
     ctx.fillStyle = '#ffef9c';
@@ -178,9 +232,18 @@ export function updateMinimap(playerPos: any, carPos: any, deerPos: any, deerAli
     ctx.lineTo(tx, ty);
     ctx.stroke();
 
+    // Nose reference line. In flight mode the radar rotates with the cockpit,
+    // so the top of the minimap is always where the rocket is pointing.
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(cx, cy - 7);
+    ctx.lineTo(cx, 10);
+    ctx.stroke();
+
     ctx.fillStyle = '#fff';
     ctx.font = '9px "Courier New", monospace';
-    ctx.fillText('YOU', cx - 9, cy + 14);
+    ctx.fillText(gameState.rocketCockpitView ? 'COCKPIT' : 'CHASE', 8, S - 8);
     ctx.fillText('TARGET', Math.max(2, tx - 14), Math.max(10, ty - 10));
     return;
   }
