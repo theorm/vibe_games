@@ -24,6 +24,13 @@ export function loadJet(scene: THREE.Scene): void {
       const maxDim = Math.max(size.x, size.y, size.z)
       planeState.jet.position.sub(center)
       planeState.jet.scale.setScalar(3 / maxDim)
+
+      // Lift plane so its bottom sits on the runway surface
+      const scaledBox = new THREE.Box3().setFromObject(planeState.jet)
+      planeState.y = -scaledBox.min.y
+      planeState.jet.position.y = planeState.y
+      planeState.jet.position.z = -30
+
       scene.add(planeState.jet)
       console.log('jet loaded, normalized scale:', planeState.jet.scale.x)
     },
