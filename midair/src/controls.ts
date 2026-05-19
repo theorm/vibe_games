@@ -1,218 +1,342 @@
 import * as THREE from 'three'
 import { planeState } from './plane'
+import { startCrash, stepCrash } from './physics'
 
-const DEAD_ZONE    = 0.1
-const MOVE_SPEED   = 0.05
-const ROT_SPEED    = 0.02
-const ZOOM_SPEED   = 0.2
-const MOUSE_ROT    = 0.005
-const MOUSE_MOVE   = 0.01
-const PAN_SPEED    = 0.02
-const THROTTLE_ACC   = 0.005  // speed added per frame while key held
-const MAX_SPEED      = 0.8
-const TAKEOFF_SPEED  = 0.4    // minimum speed required to lift off
-const LIFT_ACC       = 0.01   // vertical acceleration while pulling up
-const GRAVITY        = 0.005  // downward pull each frame
-const MAX_VERT_SPEED = 0.3
+// ── Tuning ────────────────────────────────────────────────────────────────────
+const DEAD_ZONE        = 0.12
+const THROTTLE_ACC     = 0.012   // speed units/frame per trigger unit
+const MAX_SPEED        = 1.2     // units/frame max forward
+const TAKEOFF_SPEED    = 0.3     // min speed to lift off
+const GRAVITY          = 0.004   // downward accel/frame while airborne
+const MAX_VERT_SPEED   = 0.35    // max climb/sink rate
+const ROLL_RATE        = 0.038   // rad/frame at full stick input
+const YAW_RATE         = 0.018   // rad/frame at full bumper press
+const MAX_PITCH        = Math.PI / 4     // ≈45° max visual pitch
+const MAX_ROLL         = Math.PI * 0.9   // ≈162°, allows near-inverted flight
+const ROLL_RETURN      = 0.05    // fraction to level wings per frame (no input)
+const TURN_RATE        = 0.006   // additional heading contribution from banked rollAngle
+const CRASH_VERT_SPEED = 0.12    // downward speed at impact that triggers crash
+const SURFACE_Y        = 0       // top of runway surface
 
-export type ControlMode = 'camera' | 'plane'
-export let controlMode: ControlMode = 'plane'
+const YAW_FROM_ROLL    = 0.022   // direct heading change per unit of roll input
 
-// Camera orbit state — matches initial camera.position (0, 3, -15) looking at target (0, 3, 0)
-const orbit = {
-  radius: 15,
-  theta:  Math.PI,      // azimuth: PI puts camera at -Z
-  phi:    Math.PI / 2,  // elevation: PI/2 = horizontal
-  targetX: 0,
-  targetY: 3,
-  targetZ: 0,
+// Chase camera
+const CHASE_RADIUS     = 35
+const CHASE_PHI        = 1.25    // polar angle from zenith (≈72°, behind-and-above)
+const CAM_ROT_SPEED    = 0.035   // right-stick camera rotation speed
+const CAM_RETURN_SPEED = 0.07    // speed at which camera re-centres when stick released
+const CAM_PHI_LIMIT    = 0.8     // max phi offset from chase default
+const MOUSE_CAM_SPEED  = 0.004   // mouse-drag camera speed
+
+// ── Attitude & camera state ───────────────────────────────────────────────────
+let pitchAngle     = 0   // rad; positive = nose up
+let rollAngle      = 0   // rad; positive = bank right (right wing down)
+let heading        = 0   // rad; 0 = +Z forward; increases counterclockwise (left)
+
+let camThetaOffset = 0   // user look-around offsets, auto-return to 0
+let camPhiOffset   = 0
+
+let mouseDx = 0
+let mouseDy = 0
+
+// ── Keyboard state ────────────────────────────────────────────────────────────
+let keyPitchUp   = false
+let keyPitchDown = false
+let keyRollLeft  = false
+let keyRollRight = false
+let keyYawLeft   = false
+let keyYawRight  = false
+let keyThrottle  = false
+let keyBrake     = false
+let keyPullUp    = false
+
+// ── Gamepad ───────────────────────────────────────────────────────────────────
+interface GPInput {
+  pitch:       number    // −1..1, positive = nose up  (left stick Y, inverted)
+  roll:        number    // −1..1, positive = bank right (left stick X)
+  yawLeft:     boolean   // LB bumper → rudder left
+  yawRight:    boolean   // RB bumper → rudder right
+  throttleInc: number    // 0..1  RT → accelerate
+  throttleDec: number    // 0..1  LT → brake
+  pullUp:      boolean   // A/Cross → pull up (takeoff + climb)
+  camX:        number    // right stick X → look left/right
+  camY:        number    // right stick Y → look up/down
+  camReset:    boolean   // R3 → snap camera behind plane
 }
 
-let shiftHeld          = false
-let mouseDx            = 0
-let mouseDy            = 0
-let throttleUp         = false
-let throttleDown       = false
-let pullUp             = false
-let modeToggleWasHeld  = false
+function dz(v: number): number {
+  return Math.abs(v) > DEAD_ZONE ? v : 0
+}
 
-function updateModeUI(): void {
-  let el = document.getElementById('control-mode')
+function getGamepadInput(): GPInput {
+  for (const gp of navigator.getGamepads()) {
+    if (!gp) continue
+    return {
+      pitch:       -dz(gp.axes[1] ?? 0),          // left stick Y, inverted: up = nose up
+      roll:         dz(gp.axes[0] ?? 0),           // left stick X
+      yawLeft:      !!(gp.buttons[4]?.pressed),    // LB
+      yawRight:     !!(gp.buttons[5]?.pressed),    // RB
+      throttleInc:  gp.buttons[7]?.value ?? 0,     // RT
+      throttleDec:  gp.buttons[6]?.value ?? 0,     // LT
+      pullUp:       !!(gp.buttons[0]?.pressed),    // A/Cross — pull up / takeoff
+      camX:         dz(gp.axes[2] ?? 0),           // right stick X
+      camY:         dz(gp.axes[3] ?? 0),           // right stick Y
+      camReset:     !!(gp.buttons[11]?.pressed),   // R3
+    }
+  }
+  return { pitch: 0, roll: 0, yawLeft: false, yawRight: false,
+           throttleInc: 0, throttleDec: 0, pullUp: false, camX: 0, camY: 0, camReset: false }
+}
+
+// ── Chase camera ──────────────────────────────────────────────────────────────
+function applyChaseCam(camera: THREE.Camera): void {
+  const { jet } = planeState
+  if (!jet) return
+
+  const tx = jet.position.x
+  const ty = jet.position.y + 2
+  const tz = jet.position.z
+
+  // theta tracks heading so camera always stays behind the nose
+  const theta = heading + Math.PI + camThetaOffset
+  const phi   = Math.max(0.05, Math.min(Math.PI - 0.05, CHASE_PHI + camPhiOffset))
+
+  camera.position.set(
+    tx + CHASE_RADIUS * Math.sin(phi) * Math.sin(theta),
+    ty + CHASE_RADIUS * Math.cos(phi),
+    tz + CHASE_RADIUS * Math.sin(phi) * Math.cos(theta),
+  )
+  camera.lookAt(tx, ty, tz)
+}
+
+// ── HUD ───────────────────────────────────────────────────────────────────────
+function updateHUD(): void {
+  let el = document.getElementById('flight-hud')
   if (!el) {
     el = document.createElement('div')
-    el.id = 'control-mode'
+    el.id = 'flight-hud'
     el.style.cssText = [
       'position:fixed', 'top:10px', 'left:10px',
       'color:#fff', 'font:14px monospace',
-      'background:rgba(0,0,0,.55)', 'padding:4px 10px',
-      'border-radius:4px', 'pointer-events:none',
+      'background:rgba(0,0,0,.55)', 'padding:6px 14px',
+      'border-radius:4px', 'pointer-events:none', 'line-height:1.6',
     ].join(';')
     document.body.appendChild(el)
   }
-  el.textContent = `Mode: ${controlMode}  [Tab to toggle]`
+  const thr = Math.round(planeState.speed / MAX_SPEED * 100)
+  const alt = Math.max(0, Math.round((planeState.y - planeState.groundY) * 10))
+  const status = planeState.crashed ? 'CRASHED' : planeState.isAirborne ? 'AIRBORNE' : 'ON GROUND'
+  el.innerHTML = `THR ${String(thr).padStart(3)}%&nbsp; ALT ${String(alt).padStart(5)}&nbsp; ${status}`
 }
 
+// ── Setup ─────────────────────────────────────────────────────────────────────
 export function setupControls(domElement: HTMLElement): void {
   window.addEventListener('keydown', (e) => {
-    if (e.key === 'Shift') shiftHeld = true
-    if (e.key === 'Tab') {
-      e.preventDefault()
-      controlMode = controlMode === 'camera' ? 'plane' : 'camera'
-      updateModeUI()
+    switch (e.key) {
+      case 'ArrowUp':                        keyThrottle  = true;  e.preventDefault(); break
+      case 'ArrowDown':                      keyBrake     = true;  e.preventDefault(); break
+      case 'ArrowLeft':                      keyRollLeft  = true;  e.preventDefault(); break
+      case 'ArrowRight':                     keyRollRight = true;  e.preventDefault(); break
+      case 'w': case 'W':                    keyPitchUp   = true;  break
+      case 's': case 'S':                    keyPitchDown = true;  break
+      case 'a': case 'A':                    keyRollLeft  = true;  break
+      case 'd': case 'D':                    keyRollRight = true;  break
+      case 'q': case 'Q':                    keyYawLeft   = true;  break
+      case 'e': case 'E':                    keyYawRight  = true;  break
+      case 'Shift':                          keyThrottle  = true;  break
+      case 'Control':                        keyBrake     = true;  break
+      case ' ':                              keyPullUp    = true;  e.preventDefault(); break
     }
-    if (e.key === 'ArrowUp')   throttleUp   = true
-    if (e.key === 'ArrowDown') throttleDown = true
-    if (e.key === ' ')         pullUp       = true
   })
   window.addEventListener('keyup', (e) => {
-    if (e.key === 'Shift')     shiftHeld    = false
-    if (e.key === 'ArrowUp')   throttleUp   = false
-    if (e.key === 'ArrowDown') throttleDown = false
-    if (e.key === ' ')         pullUp       = false
+    switch (e.key) {
+      case 'ArrowUp':                        keyThrottle  = false; break
+      case 'ArrowDown':                      keyBrake     = false; break
+      case 'ArrowLeft':                      keyRollLeft  = false; break
+      case 'ArrowRight':                     keyRollRight = false; break
+      case 'w': case 'W':                    keyPitchUp   = false; break
+      case 's': case 'S':                    keyPitchDown = false; break
+      case 'a': case 'A':                    keyRollLeft  = false; break
+      case 'd': case 'D':                    keyRollRight = false; break
+      case 'q': case 'Q':                    keyYawLeft   = false; break
+      case 'e': case 'E':                    keyYawRight  = false; break
+      case 'Shift':                          keyThrottle  = false; break
+      case 'Control':                        keyBrake     = false; break
+      case ' ':                              keyPullUp    = false; break
+    }
   })
-
   domElement.addEventListener('mousemove', (e) => {
     if (e.buttons === 0) return
     mouseDx += e.movementX
     mouseDy += e.movementY
   })
-
-  updateModeUI()
 }
 
-function getGamepadInput(): { x: number; y: number; zoom: number; shift: boolean; triggerUp: number; triggerDown: number; modeToggle: boolean; pullUp: boolean } {
-  const gamepads = navigator.getGamepads()
-  for (const gp of gamepads) {
-    if (!gp) continue
-    const x          = Math.abs(gp.axes[0] ?? 0) > DEAD_ZONE ? (gp.axes[0] ?? 0) : 0
-    const y          = Math.abs(gp.axes[1] ?? 0) > DEAD_ZONE ? (gp.axes[1] ?? 0) : 0
-    const zoom       = Math.abs(gp.axes[3] ?? 0) > DEAD_ZONE ? (gp.axes[3] ?? 0) : 0
-    const left       = gp.buttons[14]?.pressed ? -1 : 0
-    const right      = gp.buttons[15]?.pressed ?  1 : 0
-    const up         = gp.buttons[12]?.pressed ? -1 : 0
-    const down       = gp.buttons[13]?.pressed ?  1 : 0
-    const shift      = !!(gp.buttons[4]?.pressed || gp.buttons[5]?.pressed)
-    const triggerUp   = gp.buttons[7]?.value ?? 0    // RT  — accelerate
-    const triggerDown = gp.buttons[6]?.value ?? 0    // LT  — brake/reverse
-    const modeToggle  = !!(gp.buttons[11]?.pressed)  // R3  — toggle camera/plane mode
-    const gpPullUp    = !!(gp.buttons[0]?.pressed)   // A/Cross — pull up / climb
-    return { x: x || (left + right), y: y || (up + down), zoom, shift, triggerUp, triggerDown, modeToggle, pullUp: gpPullUp }
+// ── Crash ─────────────────────────────────────────────────────────────────────
+function triggerCrash(jet: THREE.Object3D): void {
+  planeState.crashed    = true
+  planeState.isAirborne = false
+
+  // Full 3D velocity at impact (units/frame → units/sec at 60 fps)
+  const vx = Math.sin(heading) * planeState.speed * 60
+  const vy = planeState.verticalSpeed * 60
+  const vz = Math.cos(heading) * planeState.speed * 60
+
+  const { x: qx, y: qy, z: qz, w: qw } = jet.quaternion
+  startCrash(jet.position.x, jet.position.y, jet.position.z, qx, qy, qz, qw, vx, vy, vz)
+
+  planeState.speed         = 0
+  planeState.verticalSpeed = 0
+}
+
+// ── Collision resolution ──────────────────────────────────────────────────────
+function resolveCollisions(jet: THREE.Object3D): void {
+  jet.updateMatrixWorld(true)
+  const bbox = new THREE.Box3().setFromObject(jet)
+
+  if (bbox.min.y < SURFACE_Y) {
+    const penetration = SURFACE_Y - bbox.min.y
+    planeState.y += penetration
+    jet.position.y = planeState.y
+
+    if (planeState.isAirborne && planeState.verticalSpeed < -CRASH_VERT_SPEED) {
+      triggerCrash(jet)
+      return
+    }
+    // Only settle to ground when not actively climbing — preserves takeoff
+    if (planeState.verticalSpeed <= 0) {
+      planeState.verticalSpeed = 0
+      planeState.isAirborne    = false
+      pitchAngle               = 0
+      rollAngle                = 0
+      jet.rotation.set(0, heading, 0, 'YXZ')
+    }
   }
-  return { x: 0, y: 0, zoom: 0, shift: false, triggerUp: 0, triggerDown: 0, modeToggle: false, pullUp: false }
+
+  if (!planeState.crashed) {
+    for (const obj of planeState.collidables) {
+      const objBbox = new THREE.Box3().setFromObject(obj)
+      if (bbox.intersectsBox(objBbox)) {
+        triggerCrash(jet)
+        return
+      }
+    }
+  }
 }
 
-function applyCameraOrbit(camera: THREE.Camera): void {
-  const { radius, theta, phi, targetX, targetY, targetZ } = orbit
-  camera.position.set(
-    targetX + radius * Math.sin(phi) * Math.sin(theta),
-    targetY + radius * Math.cos(phi),
-    targetZ + radius * Math.sin(phi) * Math.cos(theta),
-  )
-  camera.lookAt(targetX, targetY, targetZ)
-}
-
+// ── Main per-frame update ─────────────────────────────────────────────────────
 export function applyControls(camera: THREE.Camera): void {
   const { jet } = planeState
   if (!jet) return
 
-  const gp = getGamepadInput()
-  const shift = shiftHeld || gp.shift
-
-  // Throttle: keyboard (digital) or gamepad triggers (analog, 0–1)
-  // R3 toggles mode (debounced — only fires on the leading edge)
-  if (gp.modeToggle && !modeToggleWasHeld) {
-    controlMode = controlMode === 'camera' ? 'plane' : 'camera'
-    updateModeUI()
-  }
-  modeToggleWasHeld = gp.modeToggle
-
-  const accel = Math.max(throttleUp ? 1 : 0, gp.triggerUp)
-  const brake = Math.max(throttleDown ? 1 : 0, gp.triggerDown)
-  if (accel > 0) planeState.speed = Math.min(planeState.speed + THROTTLE_ACC * accel, MAX_SPEED)
-  if (brake > 0) planeState.speed = Math.max(planeState.speed - THROTTLE_ACC * brake, -MAX_SPEED * 0.25)
-
-  // Roll plane along runway and keep camera orbit target locked to it
-  jet.position.z += planeState.speed
-  orbit.targetZ = jet.position.z
-
-  // Takeoff / flight
-  const wantsPullUp = pullUp || gp.pullUp
-  if (!planeState.isAirborne) {
-    if (wantsPullUp && planeState.speed >= TAKEOFF_SPEED) {
-      planeState.isAirborne = true
-      planeState.verticalSpeed = LIFT_ACC
+  if (planeState.crashed) {
+    const pose = stepCrash()
+    if (pose) {
+      jet.position.set(pose.px, pose.py, pose.pz)
+      jet.quaternion.set(pose.qx, pose.qy, pose.qz, pose.qw)
     }
+    applyChaseCam(camera)
+    updateHUD()
+    return
+  }
+
+  const gp = getGamepadInput()
+
+  // ── Throttle ────────────────────────────────────────────────────────────────
+  const incInput = Math.max(keyThrottle ? 1 : 0, gp.throttleInc)
+  const decInput = Math.max(keyBrake   ? 1 : 0, gp.throttleDec)
+  if (incInput > 0) planeState.speed = Math.min(planeState.speed + THROTTLE_ACC * incInput, MAX_SPEED)
+  if (decInput > 0) planeState.speed = Math.max(planeState.speed - THROTTLE_ACC * decInput * 2, 0)
+
+  // ── Pitch (left stick Y, A button, Space) ────────────────────────────────
+  // pullUp sources: A/Cross button, Space key — always mean "nose up"
+  const pullUpInput = (gp.pullUp || keyPullUp) ? 1 : 0
+  const pitchInput  = gp.pitch + (keyPitchUp ? 1 : 0) - (keyPitchDown ? 1 : 0) + pullUpInput
+  // Only apply pitch visually when airborne; on ground the plane stays flat
+  if (planeState.isAirborne) {
+    pitchAngle = Math.max(-1, Math.min(1, pitchInput)) * MAX_PITCH
   } else {
-    planeState.verticalSpeed += wantsPullUp ? LIFT_ACC : -GRAVITY
+    pitchAngle = 0
+  }
+
+  // ── Roll / bank (left stick X): accumulated for visual banking feel ────────
+  const rollInput = gp.roll + (keyRollRight ? 1 : 0) - (keyRollLeft ? 1 : 0)
+  if (rollInput !== 0) {
+    rollAngle = Math.max(-MAX_ROLL, Math.min(MAX_ROLL, rollAngle + rollInput * ROLL_RATE))
+  } else {
+    rollAngle *= 1 - ROLL_RETURN
+  }
+
+  // ── Yaw / rudder (LB = left, RB = right) ─────────────────────────────────
+  const yawDelta = (gp.yawLeft  || keyYawLeft  ? 1 : 0)
+                 - (gp.yawRight || keyYawRight ? 1 : 0)
+  heading += yawDelta * YAW_RATE
+
+  if (planeState.isAirborne) {
+    // Direct yaw from roll: immediate heading change (arcade feel)
+    heading -= rollInput * YAW_FROM_ROLL
+    // Sustained bank also contributes to turn (coordinated turn feel)
+    heading -= rollAngle * TURN_RATE
+  }
+
+  // ── Horizontal movement (heading-driven so plane flies where it points) ───
+  jet.position.x += Math.sin(heading) * planeState.speed
+  jet.position.z += Math.cos(heading) * planeState.speed
+
+  // ── Vertical movement ─────────────────────────────────────────────────────
+  if (planeState.isAirborne) {
+    // Pitch directly sets vertical speed — no lag, stick up = climb immediately
+    planeState.verticalSpeed = Math.sin(pitchAngle) * MAX_VERT_SPEED - GRAVITY
     planeState.verticalSpeed = Math.max(-MAX_VERT_SPEED, Math.min(MAX_VERT_SPEED, planeState.verticalSpeed))
     planeState.y += planeState.verticalSpeed
-    // Nose pitch matches vertical speed
-    jet.rotation.x = -planeState.verticalSpeed / MAX_VERT_SPEED * (Math.PI / 6)
-    // Land when back at ground level
+
     if (planeState.y <= planeState.groundY) {
-      planeState.y = planeState.groundY
+      planeState.y             = planeState.groundY
       planeState.verticalSpeed = 0
-      planeState.isAirborne = false
-      jet.rotation.x = 0
+      planeState.isAirborne    = false
+      pitchAngle               = 0
+      rollAngle                = 0
     }
-  }
-  jet.position.y = planeState.y
-  orbit.targetY = planeState.y + 2
-
-  if (controlMode === 'camera') {
-    if (gp.x !== 0 || gp.y !== 0) {
-      if (shift) {
-        orbit.targetX -= gp.x * PAN_SPEED
-        orbit.targetY += gp.y * PAN_SPEED
-      } else {
-        orbit.theta -= gp.x * ROT_SPEED
-        orbit.phi    = Math.max(0.05, Math.min(Math.PI - 0.05, orbit.phi + gp.y * ROT_SPEED))
-      }
-    }
-    if (gp.zoom !== 0) {
-      orbit.radius = Math.max(1, orbit.radius + gp.zoom * ZOOM_SPEED)
-    }
-
-    if (mouseDx !== 0 || mouseDy !== 0) {
-      if (shift) {
-        orbit.targetX -= mouseDx * PAN_SPEED * 0.5
-        orbit.targetY += mouseDy * PAN_SPEED * 0.5
-      } else {
-        orbit.theta -= mouseDx * MOUSE_ROT
-        orbit.phi    = Math.max(0.05, Math.min(Math.PI - 0.05, orbit.phi + mouseDy * MOUSE_ROT))
-      }
-      mouseDx = 0
-      mouseDy = 0
-    }
-
-    applyCameraOrbit(camera)
   } else {
-    // plane mode
-    if (gp.x !== 0 || gp.y !== 0) {
-      if (shift) {
-        planeState.x += gp.x * MOVE_SPEED
-        planeState.y -= gp.y * MOVE_SPEED
-        jet.position.set(planeState.x, planeState.y, jet.position.z)
-      } else {
-        jet.rotation.y -= gp.x * ROT_SPEED
-        jet.rotation.x -= gp.y * ROT_SPEED
-      }
-    }
-    if (gp.zoom !== 0) {
-      camera.position.z += gp.zoom * ZOOM_SPEED
-    }
+    // On ground: left stick X steers (nose-wheel), pitch/roll stay flat
+    pitchAngle   = 0
+    rollAngle    = 0
+    planeState.y = planeState.groundY
+    heading     -= gp.roll * YAW_RATE * 2   // left stick X → ground steering (right = turn right)
 
-    if (mouseDx !== 0 || mouseDy !== 0) {
-      if (shift) {
-        planeState.x += mouseDx * MOUSE_MOVE
-        planeState.y -= mouseDy * MOUSE_MOVE
-        jet.position.set(planeState.x, planeState.y, jet.position.z)
-      } else {
-        jet.rotation.y -= mouseDx * MOUSE_ROT
-        jet.rotation.x -= mouseDy * MOUSE_ROT
-      }
-      mouseDx = 0
-      mouseDy = 0
+    // Takeoff: pitch stick up, A button, or Space at sufficient speed
+    if (planeState.speed >= TAKEOFF_SPEED && pitchInput > 0.1) {
+      planeState.isAirborne    = true
+      planeState.verticalSpeed = 0.02
     }
   }
+
+  // ── Apply attitude rotation (YXZ order = yaw → pitch → roll) ─────────────
+  jet.rotation.set(-pitchAngle, heading, -rollAngle, 'YXZ')
+  jet.position.y = planeState.y
+  planeState.x   = jet.position.x
+
+  // ── Chase camera: right stick look-around, auto-recentres on release ──────
+  if (gp.camReset) {
+    camThetaOffset = 0
+    camPhiOffset   = 0
+  } else {
+    camThetaOffset += gp.camX * CAM_ROT_SPEED
+    camPhiOffset   += gp.camY * CAM_ROT_SPEED
+    camPhiOffset    = Math.max(-CAM_PHI_LIMIT, Math.min(CAM_PHI_LIMIT, camPhiOffset))
+    if (gp.camX === 0 && mouseDx === 0) camThetaOffset *= 1 - CAM_RETURN_SPEED
+    if (gp.camY === 0 && mouseDy === 0) camPhiOffset   *= 1 - CAM_RETURN_SPEED
+  }
+
+  if (mouseDx !== 0 || mouseDy !== 0) {
+    camThetaOffset += mouseDx * MOUSE_CAM_SPEED
+    camPhiOffset   += mouseDy * MOUSE_CAM_SPEED
+    camPhiOffset    = Math.max(-CAM_PHI_LIMIT, Math.min(CAM_PHI_LIMIT, camPhiOffset))
+    mouseDx = 0
+    mouseDy = 0
+  }
+
+  resolveCollisions(jet)
+  applyChaseCam(camera)
+  updateHUD()
 }

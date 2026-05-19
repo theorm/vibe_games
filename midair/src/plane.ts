@@ -10,6 +10,8 @@ export const planeState = {
   speed: 0,         // units/frame along +Z (runway direction)
   verticalSpeed: 0,
   isAirborne: false,
+  crashed: false,
+  collidables: [] as THREE.Object3D[], // buildings, obstacles, etc.
 }
 
 export function loadJet(scene: THREE.Scene): void {
