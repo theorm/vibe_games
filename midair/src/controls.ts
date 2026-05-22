@@ -1,6 +1,7 @@
 import * as THREE from 'three'
 import { planeState } from './plane'
-import { startCrash, stepCrash } from './physics'
+import { startCrash, stepCrash, resetCrash } from './physics'
+import { terrainMesh } from './terrain'
 
 // ── Tuning ────────────────────────────────────────────────────────────────────
 const DEAD_ZONE        = 0.12
@@ -12,11 +13,14 @@ const MAX_VERT_SPEED   = 0.35    // max climb/sink rate
 const ROLL_RATE        = 0.038   // rad/frame at full stick input
 const YAW_RATE         = 0.018   // rad/frame at full bumper press
 const MAX_PITCH        = Math.PI / 4     // ≈45° max visual pitch
-const MAX_ROLL         = Math.PI * 0.9   // ≈162°, allows near-inverted flight
+const MAX_ROLL         = Math.PI * 0.44  // ≈79°, can't roll past vertical
 const ROLL_RETURN      = 0.05    // fraction to level wings per frame (no input)
+const ROLL_GRAVITY     = 0.015   // extra return force per radian past 45° (progressive)
 const TURN_RATE        = 0.006   // additional heading contribution from banked rollAngle
 const CRASH_VERT_SPEED = 0.12    // downward speed at impact that triggers crash
 const SURFACE_Y        = 0       // top of runway surface
+const DRAG             = 0.001   // passive speed loss per frame (air resistance)
+const CLIMB_DRAG       = 0.006   // extra speed loss per sin(pitch) while climbing
 
 const YAW_FROM_ROLL    = 0.022   // direct heading change per unit of roll input
 
@@ -27,6 +31,10 @@ const CAM_ROT_SPEED    = 0.035   // right-stick camera rotation speed
 const CAM_RETURN_SPEED = 0.07    // speed at which camera re-centres when stick released
 const CAM_PHI_LIMIT    = 0.8     // max phi offset from chase default
 const MOUSE_CAM_SPEED  = 0.004   // mouse-drag camera speed
+
+// ── BVH proximity check (reuse target to avoid GC) ───────────────────────────
+const TERRAIN_CRASH_DIST = 5    // units — approx half the plane's scaled height
+const _bvhHit: any = { point: new THREE.Vector3() }
 
 // ── Attitude & camera state ───────────────────────────────────────────────────
 let pitchAngle     = 0   // rad; positive = nose up
@@ -49,6 +57,9 @@ let keyYawRight  = false
 let keyThrottle  = false
 let keyBrake     = false
 let keyPullUp    = false
+let keyRestart   = false
+
+let prevRestartBtn = false   // edge detection: only fire once per press
 
 // ── Gamepad ───────────────────────────────────────────────────────────────────
 interface GPInput {
@@ -62,6 +73,7 @@ interface GPInput {
   camX:        number    // right stick X → look left/right
   camY:        number    // right stick Y → look up/down
   camReset:    boolean   // R3 → snap camera behind plane
+  restart:     boolean   // Start/Menu → restart game
 }
 
 function dz(v: number): number {
@@ -82,10 +94,11 @@ function getGamepadInput(): GPInput {
       camX:         dz(gp.axes[2] ?? 0),           // right stick X
       camY:         dz(gp.axes[3] ?? 0),           // right stick Y
       camReset:     !!(gp.buttons[11]?.pressed),   // R3
+      restart:      !!(gp.buttons[9]?.pressed),    // Start/Menu
     }
   }
   return { pitch: 0, roll: 0, yawLeft: false, yawRight: false,
-           throttleInc: 0, throttleDec: 0, pullUp: false, camX: 0, camY: 0, camReset: false }
+           throttleInc: 0, throttleDec: 0, pullUp: false, camX: 0, camY: 0, camReset: false, restart: false }
 }
 
 // ── Chase camera ──────────────────────────────────────────────────────────────
@@ -146,6 +159,7 @@ export function setupControls(domElement: HTMLElement): void {
       case 'Shift':                          keyThrottle  = true;  break
       case 'Control':                        keyBrake     = true;  break
       case ' ':                              keyPullUp    = true;  e.preventDefault(); break
+      case 'r': case 'R':                    keyRestart   = true;  break
     }
   })
   window.addEventListener('keyup', (e) => {
@@ -189,6 +203,24 @@ function triggerCrash(jet: THREE.Object3D): void {
   planeState.verticalSpeed = 0
 }
 
+// ── Terrain collision via BVH proximity ──────────────────────────────────────
+// Uses three-mesh-bvh's closestPointToPoint: finds nearest terrain surface to
+// the plane center in O(log n), reliable from any approach angle.
+function hitsTerrainThisFrame(jet: THREE.Object3D): boolean {
+  if (!terrainMesh) return false
+  const bvh = (terrainMesh.geometry as any).boundsTree
+  if (!bvh) return false
+
+  const hit = bvh.closestPointToPoint(jet.position, _bvhHit, 0, TERRAIN_CRASH_DIST)
+  if (!hit) return false
+
+  // Ignore flat ground (y≈0) during takeoff roll and initial climb — the runway
+  // sits on the same y=0 plane as the flat-zone terrain
+  if (_bvhHit.point.y < 2 && planeState.y - planeState.groundY < 10) return false
+
+  return true
+}
+
 // ── Collision resolution ──────────────────────────────────────────────────────
 function resolveCollisions(jet: THREE.Object3D): void {
   jet.updateMatrixWorld(true)
@@ -213,6 +245,12 @@ function resolveCollisions(jet: THREE.Object3D): void {
     }
   }
 
+  // Terrain crash: any contact with hills/mountains while airborne = crash
+  if (!planeState.crashed && planeState.isAirborne && hitsTerrainThisFrame(jet)) {
+    triggerCrash(jet)
+    return
+  }
+
   if (!planeState.crashed) {
     for (const obj of planeState.collidables) {
       const objBbox = new THREE.Box3().setFromObject(obj)
@@ -224,10 +262,40 @@ function resolveCollisions(jet: THREE.Object3D): void {
   }
 }
 
+// ── Reset ─────────────────────────────────────────────────────────────────────
+function resetGame(): void {
+  const { jet } = planeState
+  if (!jet) return
+
+  planeState.speed         = 0
+  planeState.verticalSpeed = 0
+  planeState.isAirborne    = false
+  planeState.crashed       = false
+  planeState.y             = planeState.groundY
+  planeState.x             = 0
+
+  jet.position.set(0, planeState.groundY, -30)
+  pitchAngle     = 0
+  rollAngle      = 0
+  heading        = 0
+  camThetaOffset = 0
+  camPhiOffset   = 0
+  jet.rotation.set(0, 0, 0, 'YXZ')
+  resetCrash()
+}
+
 // ── Main per-frame update ─────────────────────────────────────────────────────
 export function applyControls(camera: THREE.Camera): void {
   const { jet } = planeState
   if (!jet) return
+
+  const gp = getGamepadInput()
+
+  // ── Restart ─────────────────────────────────────────────────────────────────
+  const restartPressed = (gp.restart && !prevRestartBtn) || keyRestart
+  prevRestartBtn = gp.restart
+  keyRestart     = false
+  if (restartPressed) { resetGame() }
 
   if (planeState.crashed) {
     const pose = stepCrash()
@@ -239,8 +307,6 @@ export function applyControls(camera: THREE.Camera): void {
     updateHUD()
     return
   }
-
-  const gp = getGamepadInput()
 
   // ── Throttle ────────────────────────────────────────────────────────────────
   const incInput = Math.max(keyThrottle ? 1 : 0, gp.throttleInc)
@@ -266,6 +332,11 @@ export function applyControls(camera: THREE.Camera): void {
   } else {
     rollAngle *= 1 - ROLL_RETURN
   }
+  // Progressive gravity pull toward level: increases beyond 45° so steep banks self-recover
+  if (planeState.isAirborne) {
+    const overBank = Math.max(0, Math.abs(rollAngle) - Math.PI / 4)
+    rollAngle -= Math.sign(rollAngle) * overBank * ROLL_GRAVITY
+  }
 
   // ── Yaw / rudder (LB = left, RB = right) ─────────────────────────────────
   const yawDelta = (gp.yawLeft  || keyYawLeft  ? 1 : 0)
@@ -283,11 +354,23 @@ export function applyControls(camera: THREE.Camera): void {
   jet.position.x += Math.sin(heading) * planeState.speed
   jet.position.z += Math.cos(heading) * planeState.speed
 
+  // ── Speed decay (drag + gravity penalty for climbing) ────────────────────
+  if (planeState.isAirborne) {
+    planeState.speed = Math.max(0,
+      planeState.speed - DRAG - Math.max(0, Math.sin(pitchAngle)) * CLIMB_DRAG)
+  }
+
   // ── Vertical movement ─────────────────────────────────────────────────────
   if (planeState.isAirborne) {
-    // Pitch directly sets vertical speed — no lag, stick up = climb immediately
-    planeState.verticalSpeed = Math.sin(pitchAngle) * MAX_VERT_SPEED - GRAVITY
-    planeState.verticalSpeed = Math.max(-MAX_VERT_SPEED, Math.min(MAX_VERT_SPEED, planeState.verticalSpeed))
+    const speedRatio  = planeState.speed / MAX_SPEED
+    const bankCos     = Math.max(0, Math.cos(rollAngle))
+    const liftFactor  = speedRatio * bankCos
+
+    // Accumulate vertical speed: lift cancels gravity at cruise; stall = freefall builds up
+    const liftAccel  = (liftFactor - 1) * GRAVITY                         // 0 at full speed+level, negative otherwise
+    const pitchAccel = Math.sin(pitchAngle) * GRAVITY * 3 * speedRatio    // pitch only helps when moving
+    planeState.verticalSpeed = Math.max(-MAX_VERT_SPEED, Math.min(MAX_VERT_SPEED,
+      planeState.verticalSpeed + liftAccel + pitchAccel))
     planeState.y += planeState.verticalSpeed
 
     if (planeState.y <= planeState.groundY) {
@@ -312,7 +395,7 @@ export function applyControls(camera: THREE.Camera): void {
   }
 
   // ── Apply attitude rotation (YXZ order = yaw → pitch → roll) ─────────────
-  jet.rotation.set(-pitchAngle, heading, -rollAngle, 'YXZ')
+  jet.rotation.set(-pitchAngle, heading, rollAngle, 'YXZ')
   jet.position.y = planeState.y
   planeState.x   = jet.position.x
 
